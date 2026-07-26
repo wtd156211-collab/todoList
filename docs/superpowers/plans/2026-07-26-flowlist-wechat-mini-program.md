@@ -1,1363 +1,392 @@
-# Flowlist WeChat Mini Program MVP Implementation Plan
+# Flowlist 鑷缓鍚庣寰俊灏忕▼搴忓疄鏂借鍒?
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** Build and release a Chinese-first, private personal-task-management WeChat Mini Program with task CRUD, calendar, attachments, in-app notifications, and opt-in WeChat subscription-message reminders.
-
-**Architecture:** Use a native TypeScript WeChat Mini Program for all UI, with a small service layer that calls CloudBase functions. Cloud functions are the only code allowed to read or change business collections; they derive the current user from the trusted WeChat context, enforce ownership, and own reminder delivery. A five-minute scheduled function atomically claims due reminders, writes an in-app notification, and then sends the approved subscription-message template.
-
-**Tech Stack:** Native WeChat Mini Program (TypeScript, WXML, WXSS), CloudBase, `wx-server-sdk`, MobX Mini Program, Zod, Day.js with UTC/timezone plugins, Vitest, `miniprogram-automator`, WeChat Developer Tools, GitHub Actions.
-
+**Goal:** 浜や粯鍙湪寰俊涓櫥褰曘€佽法璁惧鍚屾涓汉浠诲姟銆佺鐞嗙鏈夐檮浠跺苟鎺ユ敹搴旂敤鍐呮彁閱掔殑 Flowlist 灏忕▼搴忎笌鑷缓 Python 鏈嶅姟绔€?
+**Architecture:** 鍘熺敓寰俊灏忕▼搴忕粡 HTTPS 璋冪敤 Nginx 涓嬬殑 /flowlist/api/v1 FastAPI 鍗曚綋鏈嶅姟銆侾ostgreSQL 淇濆瓨鏁版嵁锛孯edis 鏀寔 Celery锛涢檮浠剁敱 API 绛惧彂鐭椂 OSS POST 琛ㄥ崟绛栫暐鐩翠紶绉佹湁 Bucket銆侱ocker Compose 閮ㄧ讲 API銆乄orker銆丅eat銆丳ostgreSQL 涓?Redis銆?
+**Tech Stack:** TypeScript銆佸師鐢?WXML/WXSS銆丮obX Mini Program 6.12.3銆丗astAPI銆丼QLAlchemy 2銆丄lembic銆丳ostgreSQL 16銆丷edis 7銆丆elery銆侀樋閲屼簯 OSS Python SDK V2銆丏ocker Compose銆乸ytest銆乂itest銆?
 ## Global Constraints
 
-- Target only WeChat Mini Program. Do not add H5, native App, email/password login, Google login, or Apple login.
-- Scope is private personal task management. Do not add sharing, invitations, comments, mentions, or roles.
-- UI copy is Simplified Chinese. Preserve the Flowlist visual hierarchy from `Flowlist_Wireframes.pdf`.
-- A task title is required. Note, due date, reminder, subtasks, and attachments are optional.
-- Priority values are exactly `low`, `medium`, and `high`; new tasks default to `medium`.
-- Ship built-in `Work` and `Personal` categories. Users can add, rename, and recolor their own categories.
-- Allow reminder offsets of `at_due`, `10m`, `30m`, `1h`, and `1d`; reminder is off by default.
-- Support image and PDF attachments only; maximum 10 MB per file and five files per task.
-- Store timestamps as UTC epoch milliseconds; store an IANA timezone with every dated task. The initial timezone is `Asia/Shanghai`.
-- A user must actively grant the approved subscription-message template when saving a task with an external reminder. Rejection must not block saving the task.
-- Subscription-message template availability, Mini Program category, and app-review requirements must be confirmed in the WeChat Public Platform before reminder work begins.
-- Never send `openid`, `session_key`, AppSecret, or CloudBase administrator credentials to the Mini Program client or logs.
-- This folder is not currently a Git repository. Task 1 initializes it before any implementation commits.
-
+- 浠呬氦浠樺井淇″皬绋嬪簭锛涗笉鍔犲叆 H5銆佸師鐢?App銆佸洟闃熷崗浣溿€佸叡浜换鍔℃垨浠樿垂鑳藉姏銆?- API 鍩鸿矾寰勫浐瀹氫负 /flowlist/api/v1锛涘仴搴锋鏌ヤ负 GET /flowlist/api/v1/health銆?- 鐢ㄦ埛韬唤鍙敱鏈嶅姟绔?Bearer token 鍐冲畾锛涘皬绋嬪簭涓嶅緱鎸佹湁 AppSecret銆丱SS AccessKey 鎴栨暟鎹簱鍑嵁銆?- OSS Bucket flowlist 淇濇寔绉佹湁锛屽璞￠敭鍥哄畾涓?flowlist/{user_id}/{task_id}/{uuid}锛涗粎 JPEG銆丳NG銆丳DF锛屽崟鏂囦欢鏈€澶?10 MiB銆佹瘡浠诲姟鏈€澶?5 涓€?- 鎵€鏈夋椂闂翠互 UTC 瀛樺偍锛屾柊鐢ㄦ埛鏃跺尯涓?Asia/Shanghai銆?- .env銆乸roject.private.config.json銆佷换浣?AccessKey 鎴?token 涓嶅緱鎻愪氦锛沺roject.config.json 搴旂撼鍏ヤ粨搴撱€?- 姣忛」浠诲姟鍏堝啓澶辫触娴嬭瘯锛屽悗浣滄渶灏忓疄鐜帮紱娴嬭瘯閫氳繃鍚庡崟鐙彁浜ゅ苟鎺ㄩ€?origin/master銆?
 ---
 
-## Audit Summary and Scope Decision
+## 鏂囦欢缁撴瀯
 
-The existing workspace contains design assets and planning documents, but no application source tree or Git repository. The previous plan correctly selected a native Mini Program plus CloudBase, but it was an architectural document rather than an execution plan: it did not lock down file ownership, function contracts, test commands, or commit boundaries.
+    miniprogram/
+      app.ts, app.json, app.wxss
+      pages/{home,task-form,task-detail,calendar,notifications,profile}/
+      components/{task-card,task-editor,month-calendar,empty-state}/
+      services/{api,auth,tasks,categories,attachments,notifications}.ts
+      stores/{session,tasks}.ts
+    backend/
+      app/{api,core,db,models,schemas,services,workers}/
+      alembic/versions/
+      tests/{unit,integration}/
+    deploy/nginx/flowlist.conf
+    compose.yaml
 
-This plan covers Mini Program UI, CloudBase business functions, and reminder delivery in one document because they form a single user-visible MVP and cannot be independently released. The subscription-message prerequisite is deliberately separated as an early gate: if the approved template is unavailable, Tasks 1 through 8 remain shippable, while Task 9 is disabled and the product copy must only promise in-app reminders.
+miniprogram/services 鏄〉闈㈣闂綉缁滅殑鍞竴鍏ュ彛銆傚悗绔?API 鍙鐞?HTTP锛宻ervices 鎵挎媴涓氬姟瑙勫垯锛宮odels 鍙〃绀烘寔涔呭寲銆侰elery Worker 璋冪敤鍚屼竴 service 灞傘€?
+## 鍏变韩鎺ュ彛
 
-| Requirement from the approved scope | Implementing tasks |
-| --- | --- |
-| WeChat identity and private data | 1, 3, 4 |
-| Task create, edit, complete, delete, search, and filter | 2, 4, 5, 7 |
-| Categories, subtasks, and attachments | 3, 5, 8 |
-| Monthly calendar | 6, 8 |
-| In-app notifications and subscription reminders | 6, 9 |
-| Profile and settings | 3, 10 |
-| Testing, privacy, review, and release | 1, 9, 10, 11 |
+    export type ApiResult<T> =
+      | { ok: true; data: T }
+      | { ok: false; code: 'AUTHENTICATION_FAILED' | 'VALIDATION_ERROR' | 'NOT_FOUND' | 'FORBIDDEN' | 'CONFLICT' | 'UPLOAD_REJECTED' | 'INTERNAL_ERROR'; message: string };
 
-## Planned File Structure
+    export interface TaskInput {
+      title: string; note: string; categoryId: string | null;
+      priority: 'low' | 'medium' | 'high'; dueAt: string | null;
+      timezone: string; reminderAt: string | null;
+    }
 
-```text
-.
-├── miniprogram/
-│   ├── app.ts
-│   ├── app.json
-│   ├── app.wxss
-│   ├── pages/
-│   │   ├── welcome/index.{ts,wxml,wxss,json}
-│   │   ├── home/index.{ts,wxml,wxss,json}
-│   │   ├── task-form/index.{ts,wxml,wxss,json}
-│   │   ├── task-detail/index.{ts,wxml,wxss,json}
-│   │   ├── calendar/index.{ts,wxml,wxss,json}
-│   │   ├── notifications/index.{ts,wxml,wxss,json}
-│   │   ├── profile/index.{ts,wxml,wxss,json}
-│   │   └── settings/categories/index.{ts,wxml,wxss,json}
-│   ├── components/
-│   │   ├── task-card/
-│   │   ├── task-editor/
-│   │   ├── month-calendar/
-│   │   ├── bottom-tab-bar/
-│   │   └── empty-state/
-│   ├── services/
-│   │   ├── cloud.ts
-│   │   ├── tasks.ts
-│   │   ├── categories.ts
-│   │   ├── notifications.ts
-│   │   ├── reminders.ts
-│   │   └── upload.ts
-│   ├── stores/
-│   │   ├── session.ts
-│   │   └── task-filter.ts
-│   └── utils/
-│       ├── date.ts
-│       ├── errors.ts
-│       └── subscription.ts
-├── shared/
-│   ├── domain.ts
-│   ├── schemas.ts
-│   ├── contracts.ts
-│   └── reminder.ts
-├── cloudfunctions/
-│   ├── _shared/db.ts
-│   ├── bootstrap-user/
-│   ├── categories/
-│   ├── tasks/
-│   ├── notifications/
-│   ├── task-files/
-│   └── send-due-reminders/
-├── tests/
-│   ├── unit/
-│   ├── cloudfunctions/
-│   └── e2e/
-├── docs/
-│   ├── privacy-data-inventory.md
-│   ├── release-checklist.md
-│   └── superpowers/plans/
-├── package.json
-├── tsconfig.json
-├── vitest.config.ts
-├── project.config.json
-└── cloudbaserc.json
-```
+    async def create_task(session: AsyncSession, user_id: UUID, payload: TaskCreate) -> Task: ...
+    async def update_task(session: AsyncSession, user_id: UUID, task_id: UUID, version: int, payload: TaskUpdate) -> Task: ...
+    async def create_upload_policy(session: AsyncSession, user_id: UUID, task_id: UUID, payload: AttachmentCreate) -> UploadPolicy: ...
 
-`shared/` is the single source of truth for domain types, validation, function payloads, reminder state, and error codes. Mini Program page code must call a `miniprogram/services/` function instead of invoking cloud functions directly. Cloud-function handlers must import shared validation and query only by the OpenID obtained from `cloud.getWXContext()`.
-
-## Shared Interfaces
-
-All later tasks use these exact names and field names.
-
-```ts
-// shared/domain.ts
-export type TaskStatus = 'todo' | 'completed';
-export type TaskPriority = 'low' | 'medium' | 'high';
-export type ReminderOffset = 'at_due' | '10m' | '30m' | '1h' | '1d';
-export type ReminderStatus = 'off' | 'pending' | 'skipped' | 'sent' | 'failed';
-
-export interface Category {
-  id: string;
-  name: string;
-  color: string;
-  isSystem: boolean;
-  sortOrder: number;
-}
-
-export interface Subtask {
-  id: string;
-  title: string;
-  completed: boolean;
-  sortOrder: number;
-}
-
-export interface TaskAttachment {
-  fileId: string;
-  name: string;
-  mimeType: 'image/jpeg' | 'image/png' | 'application/pdf';
-  sizeBytes: number;
-}
-
-export interface Reminder {
-  enabled: boolean;
-  offset: ReminderOffset;
-  triggerAtMs: number | null;
-  status: ReminderStatus;
-  templateId: string | null;
-  subscriptionGrantedAtMs: number | null;
-}
-
-export interface TaskInput {
-  id?: string;
-  title: string;
-  note: string;
-  categoryId: string | null;
-  priority: TaskPriority;
-  dueAtMs: number | null;
-  timezone: string;
-  reminder: Reminder;
-  subtasks: Subtask[];
-  attachments: TaskAttachment[];
-}
-
-export interface Task extends TaskInput {
-  id: string;
-  status: TaskStatus;
-  completedAtMs: number | null;
-  createdAtMs: number;
-  updatedAtMs: number;
-}
-
-export interface AppNotification {
-  id: string;
-  taskId: string | null;
-  type: 'due_soon' | 'due_now' | 'completed' | 'overdue';
-  title: string;
-  content: string;
-  isRead: boolean;
-  createdAtMs: number;
-}
-```
-
-```ts
-// shared/contracts.ts
-export type CloudSuccess<T> = { ok: true; data: T };
-export type CloudFailure = {
-  ok: false;
-  code:
-    | 'VALIDATION_ERROR'
-    | 'NOT_FOUND'
-    | 'FORBIDDEN'
-    | 'CONFLICT'
-    | 'SUBSCRIPTION_REQUIRED'
-    | 'UPLOAD_REJECTED'
-    | 'INTERNAL_ERROR';
-  message: string;
-};
-export type CloudResult<T> = CloudSuccess<T> | CloudFailure;
-
-export interface TaskListInput {
-  scope: 'today' | 'upcoming' | 'all';
-  keyword: string;
-  selectedDateMs: number | null;
-  cursor: string | null;
-  limit: number;
-}
-
-export interface TaskListOutput {
-  items: Task[];
-  nextCursor: string | null;
-}
-
-export interface SaveTaskInput extends TaskInput {
-  subscriptionAccepted: boolean;
-}
-```
-
-```ts
-// cloudfunctions/_shared/db.ts
-// This adapter is created in Task 3. Production handlers call getDb(); tests inject Db directly.
-export interface Db {
-  users: {
-    findOne(where: { openid: string }): Promise<{ openid: string; timezone: string } | null>;
-    insert(doc: { openid: string; timezone: string; createdAtMs: number }): Promise<void>;
-  };
-  categories: {
-    findOne(where: { _id?: string; ownerOpenid: string; name?: string }): Promise<(Category & { ownerOpenid: string }) | null>;
-    findMany(where: { ownerOpenid: string }, sort: { sortOrder: 1 }): Promise<Category[]>;
-    insert(doc: Omit<Category, 'id'> & { ownerOpenid: string }): Promise<void>;
-    update(where: { _id: string; ownerOpenid: string }, patch: Partial<Category>): Promise<void>;
-    delete(where: { _id: string; ownerOpenid: string }): Promise<void>;
-  };
-  tasks: {
-    findOne(where: { _id: string; ownerOpenid: string }): Promise<(Task & { ownerOpenid: string }) | null>;
-    findMany(where: { ownerOpenid: string }, options: { limit: number; cursor: string | null }): Promise<Array<Task & { ownerOpenid: string }>>;
-    insert(doc: Task & { ownerOpenid: string }): Promise<void>;
-    findDueReminders(range: { fromMs: number; toMs: number }): Promise<Array<Task & { ownerOpenid: string }>>;
-    update(where: { _id: string; ownerOpenid?: string }, patch: Record<string, unknown>): Promise<void>;
-    delete(where: { _id: string; ownerOpenid: string }): Promise<void>;
-  };
-  notifications: {
-    findOne(where: { _id: string; ownerOpenid: string }): Promise<(AppNotification & { ownerOpenid: string }) | null>;
-    findMany(where: { ownerOpenid: string }, options: { limit: number; cursor: string | null }): Promise<Array<AppNotification & { ownerOpenid: string }>>;
-    insert(doc: Omit<AppNotification, 'id'> & { ownerOpenid: string }): Promise<void>;
-    update(where: { _id: string; ownerOpenid: string }, patch: Partial<AppNotification>): Promise<void>;
-    delete(where: { _id?: string; ownerOpenid: string }): Promise<void>;
-  };
-  reminderDeliveries: {
-    insertIfAbsent(doc: { taskId: string; triggerAtMs: number | null }): Promise<boolean>;
-    delete(where: { taskId: string }): Promise<void>;
-  };
-}
-
-export function getDb(): Db {
-  return wx.cloud.database() as unknown as Db;
-}
-```
-
-### Task 1: Initialize the native Mini Program workspace and test harness
+### Task 1: 寤虹珛灏忕▼搴忋€丗astAPI 涓?Compose 楠ㄦ灦
 
 **Files:**
-- Create: `package.json`
-- Create: `tsconfig.json`
-- Create: `vitest.config.ts`
-- Create: `project.config.json`
-- Create: `cloudbaserc.json`
-- Create: `miniprogram/app.ts`
-- Create: `miniprogram/app.json`
-- Create: `miniprogram/app.wxss`
-- Create: `tests/unit/project-config.test.ts`
-- Create: `.gitignore`
 
-**Interfaces:**
-- Consumes: the global constraints in this plan.
-- Produces: a TypeScript Mini Program project, Vitest command, CloudBase directory convention, and a Git repository used by every later task.
+- Create: .gitignore, package.json, tsconfig.json, vitest.config.ts, miniprogram/app.ts, miniprogram/app.json, miniprogram/app.wxss, backend/pyproject.toml, backend/app/main.py, backend/tests/unit/test_health.py, tests/unit/app-config.test.ts, compose.yaml, .env.example
+- Modify: project.config.json
+- Test: backend/tests/unit/test_health.py, tests/unit/app-config.test.ts
 
-- [ ] **Step 1: Initialize Git and install the exact development dependencies.**
+**Interfaces:** 寰俊寮€鍙戣€呭伐鍏峰彲鎵撳紑 miniprogram/锛孏ET /flowlist/api/v1/health 杩斿洖 status ok銆?
+- [ ] **Step 1: 鍐欏け璐ユ祴璇曘€?*
 
-Run:
+    from fastapi.testclient import TestClient
+    from app.main import app
 
-```powershell
-git init
-npm init -y
-npm install mobx-miniprogram mobx-miniprogram-bindings zod dayjs
-npm install -D typescript vitest miniprogram-api-typings miniprogram-automator @types/node
-```
+    def test_health() -> None:
+        response = TestClient(app).get('/flowlist/api/v1/health')
+        assert response.json() == {'status': 'ok'}
 
-- [ ] **Step 2: Write the failing project-configuration test.**
+    import config from '../../miniprogram/app.json';
+    import { expect, it } from 'vitest';
+    it('registers six MVP pages', () => expect(config.pages).toHaveLength(6));
 
-```ts
-// tests/unit/project-config.test.ts
-import { describe, expect, it } from 'vitest';
-import appConfig from '../../miniprogram/app.json';
+- [ ] **Step 2: 杩愯澶辫触娴嬭瘯銆?*
 
-describe('application configuration', () => {
-  it('declares all MVP pages and uses a custom tab bar', () => {
-    expect(appConfig.pages).toEqual([
-      'pages/welcome/index',
-      'pages/home/index',
-      'pages/task-form/index',
-      'pages/task-detail/index',
-      'pages/calendar/index',
-      'pages/notifications/index',
-      'pages/profile/index',
-      'pages/settings/categories/index',
-    ]);
-    expect(appConfig.tabBar.custom).toBe(true);
-  });
-});
-```
+Run: cd backend; uv run pytest tests/unit/test_health.py -q
+Run: npm test -- tests/unit/app-config.test.ts
+Expected: FAIL锛屾ā鍧楀皻涓嶅瓨鍦ㄣ€?
+- [ ] **Step 3: 浣滄渶灏忓疄鐜般€?*
 
-- [ ] **Step 3: Run the test to verify the project has no configuration yet.**
+    from fastapi import FastAPI
 
-Run: `npx vitest run tests/unit/project-config.test.ts`
+    app = FastAPI(title='Flowlist API')
 
-Expected: FAIL because `miniprogram/app.json` does not exist.
+    @app.get('/flowlist/api/v1/health')
+    async def health() -> dict[str, str]:
+        return {'status': 'ok'}
 
-- [ ] **Step 4: Create the minimal project configuration and app shell.**
+灏?project.config.json 鐨?miniprogramRoot 璁句负 miniprogram/銆傚浐瀹?mobx-miniprogram 6.12.3銆乵obx-miniprogram-bindings 6.0.0 鍜?Vitest锛汸ython 闄愬埗涓?>=3.12,<3.13 骞跺０鏄?FastAPI銆丼QLAlchemy銆丄lembic銆乤syncpg銆丆elery銆丷edis銆丳yJWT銆乭ttpx銆乷ss2銆乸ytest銆傚拷鐣?.env銆乸roject.private.config.json銆乶ode_modules/銆?venv/銆?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-```json
-// miniprogram/app.json
-{
-  "pages": [
-    "pages/welcome/index",
-    "pages/home/index",
-    "pages/task-form/index",
-    "pages/task-detail/index",
-    "pages/calendar/index",
-    "pages/notifications/index",
-    "pages/profile/index",
-    "pages/settings/categories/index"
-  ],
-  "window": {
-    "navigationBarTitleText": "Flowlist",
-    "navigationBarTextStyle": "black",
-    "navigationBarBackgroundColor": "#FFFFFF",
-    "backgroundColor": "#F8FAFC"
-  },
-  "tabBar": { "custom": true }
-}
-```
+Run: npm install; npm test -- tests/unit/app-config.test.ts
+Run: cd backend; uv sync; uv run pytest tests/unit/test_health.py -q
+Expected: PASS銆?
+    git add .gitignore package.json package-lock.json tsconfig.json vitest.config.ts project.config.json miniprogram backend compose.yaml .env.example tests
+    git commit -m "chore: scaffold Flowlist mini program and API"
+    git push origin master
 
-```ts
-// miniprogram/app.ts
-App({
-  globalData: { hasBootstrapped: false },
-});
-```
-
-Configure `tsconfig.json` with `strict: true`, `noUncheckedIndexedAccess: true`, and `types: ["miniprogram-api-typings"]`. Configure the `test` script as `vitest run` and the `test:watch` script as `vitest`.
-
-- [ ] **Step 5: Run the configuration test and type-check.**
-
-Run:
-
-```powershell
-npx vitest run tests/unit/project-config.test.ts
-npx tsc --noEmit
-```
-
-Expected: both commands PASS.
-
-- [ ] **Step 6: Commit the project baseline.**
-
-```powershell
-git add package.json package-lock.json tsconfig.json vitest.config.ts project.config.json cloudbaserc.json miniprogram tests .gitignore
-git commit -m "chore: initialize Flowlist Mini Program workspace"
-```
-
-### Task 2: Define shared task contracts, validation, and date calculations
+### Task 2: 娣诲姞閰嶇疆銆侀敊璇崗璁笌 PostgreSQL 杩佺Щ
 
 **Files:**
-- Create: `shared/domain.ts`
-- Create: `shared/contracts.ts`
-- Create: `shared/schemas.ts`
-- Create: `shared/reminder.ts`
-- Create: `tests/unit/schemas.test.ts`
-- Create: `tests/unit/reminder.test.ts`
 
-**Interfaces:**
-- Consumes: Task 1 TypeScript and Vitest setup.
-- Produces: `TaskInput`, `Task`, `Reminder`, `TaskListInput`, `CloudResult<T>`, `taskInputSchema`, and `calculateReminderTriggerAtMs()` for pages and cloud functions.
+- Create: backend/app/core/config.py, backend/app/core/errors.py, backend/app/db/base.py, backend/app/db/session.py, backend/app/models/user.py, backend/app/models/category.py, backend/app/models/task.py, backend/app/models/attachment.py, backend/app/models/reminder.py, backend/app/models/notification.py, backend/alembic.ini, backend/alembic/env.py, backend/alembic/versions/0001_initial_schema.py, backend/tests/unit/test_config.py, backend/tests/integration/test_schema.py
+- Modify: backend/app/main.py, compose.yaml, .env.example
+- Test: backend/tests/unit/test_config.py, backend/tests/integration/test_schema.py
 
-- [ ] **Step 1: Write failing validation and reminder tests.**
+**Interfaces:** Settings銆侀敊璇?JSON {code,message,request_id,details?} 鍜?users/categories/tasks/task_attachments/reminders/notifications 琛ㄣ€?
+- [ ] **Step 1: 鍐欏け璐ユ祴璇曘€?*
 
-```ts
-// tests/unit/schemas.test.ts
-import { describe, expect, it } from 'vitest';
-import { taskInputSchema } from '../../shared/schemas';
+    def test_missing_database_url_is_rejected(monkeypatch):
+        monkeypatch.delenv('DATABASE_URL', raising=False)
+        with pytest.raises(ValidationError):
+            Settings()
 
-describe('taskInputSchema', () => {
-  it('rejects an empty title', () => {
-    const result = taskInputSchema.safeParse({ title: '', note: '', priority: 'medium', categoryId: null, dueAtMs: null, timezone: 'Asia/Shanghai', reminder: { enabled: false, offset: 'at_due', triggerAtMs: null, status: 'off', templateId: null, subscriptionGrantedAtMs: null }, subtasks: [], attachments: [] });
-    expect(result.success).toBe(false);
-  });
-});
-```
+    async def test_task_has_version(session):
+        task = Task(user_id=uuid4(), title='鏁寸悊璁″垝', priority='medium', status='todo', version=1)
+        session.add(task)
+        await session.flush()
+        assert task.version == 1
 
-```ts
-// tests/unit/reminder.test.ts
-import { describe, expect, it } from 'vitest';
-import { calculateReminderTriggerAtMs } from '../../shared/reminder';
+- [ ] **Step 2: 纭澶辫触銆?*
 
-describe('calculateReminderTriggerAtMs', () => {
-  it('subtracts thirty minutes from a due timestamp', () => {
-    expect(calculateReminderTriggerAtMs(1_800_000, '30m')).toBe(0);
-  });
-});
-```
+Run: cd backend; uv run pytest tests/unit/test_config.py tests/integration/test_schema.py -q
+Expected: FAIL锛岄厤缃拰妯″瀷灏氫笉瀛樺湪銆?
+- [ ] **Step 3: 瀹炵幇閰嶇疆銆佹ā鍨嬪拰杩佺Щ銆?*
 
-- [ ] **Step 2: Run the tests to verify the contracts are absent.**
+Settings 蹇呭～ DATABASE_URL銆丷EDIS_URL銆丣WT_SECRET銆乄ECHAT_APP_ID銆乄ECHAT_APP_SECRET銆丱SS_ENDPOINT銆丱SS_BUCKET銆丱SS_ACCESS_KEY_ID銆丱SS_ACCESS_KEY_SECRET锛屼笖涓嶅洖鏄惧€笺€備换鍔¤〃鍖呭惈 user/category銆佹爣棰樸€佹弿杩般€佷紭鍏堢骇銆佺姸鎬併€佹埅姝㈡椂闂淬€佹椂鍖恒€佸畬鎴愭椂闂淬€乿ersion 鍜屽璁℃椂闂淬€備负 user_id,due_at 鍙?user_id,updated_at 寤哄鍚堢储寮曘€侰ompose 鐨?PostgreSQL 鍜?Redis 涓嶅彂甯冨涓绘満绔彛銆?
+- [ ] **Step 4: 杩佺Щ銆侀獙璇佸苟鎻愪氦銆?*
 
-Run: `npx vitest run tests/unit/schemas.test.ts tests/unit/reminder.test.ts`
+Run: docker compose up -d postgres redis
+Run: cd backend; uv run alembic upgrade head; uv run pytest tests/unit/test_config.py tests/integration/test_schema.py -q
+Expected: PASS銆?
+    git add backend compose.yaml .env.example
+    git commit -m "feat: add Flowlist data model and configuration"
+    git push origin master
 
-Expected: FAIL because the shared modules do not exist.
-
-- [ ] **Step 3: Implement the shared types and minimal rules.**
-
-Create the exact `shared/domain.ts` and `shared/contracts.ts` interfaces shown in **Shared Interfaces**. Implement the following schema and reminder function:
-
-```ts
-// shared/schemas.ts
-import { z } from 'zod';
-
-export const taskInputSchema = z.object({
-  id: z.string().min(1).optional(),
-  title: z.string().trim().min(1).max(120),
-  note: z.string().max(4_000),
-  categoryId: z.string().min(1).nullable(),
-  priority: z.enum(['low', 'medium', 'high']),
-  dueAtMs: z.number().int().positive().nullable(),
-  timezone: z.string().min(1).max(64),
-  reminder: z.object({
-    enabled: z.boolean(),
-    offset: z.enum(['at_due', '10m', '30m', '1h', '1d']),
-    triggerAtMs: z.number().int().positive().nullable(),
-    status: z.enum(['off', 'pending', 'skipped', 'sent', 'failed']),
-    templateId: z.string().min(1).nullable(),
-    subscriptionGrantedAtMs: z.number().int().positive().nullable(),
-  }),
-  subtasks: z.array(z.object({ id: z.string().min(1), title: z.string().trim().min(1).max(120), completed: z.boolean(), sortOrder: z.number().int().min(0) })).max(50),
-  attachments: z.array(z.object({ fileId: z.string().min(1), name: z.string().min(1).max(255), mimeType: z.enum(['image/jpeg', 'image/png', 'application/pdf']), sizeBytes: z.number().int().positive().max(10 * 1024 * 1024) })).max(5),
-});
-```
-
-```ts
-// shared/reminder.ts
-import type { ReminderOffset } from './domain';
-
-const offsetMs: Record<ReminderOffset, number> = {
-  at_due: 0,
-  '10m': 10 * 60 * 1_000,
-  '30m': 30 * 60 * 1_000,
-  '1h': 60 * 60 * 1_000,
-  '1d': 24 * 60 * 60 * 1_000,
-};
-
-export function calculateReminderTriggerAtMs(dueAtMs: number, offset: ReminderOffset): number {
-  return dueAtMs - offsetMs[offset];
-}
-```
-
-- [ ] **Step 4: Extend the tests for attachment limits and the one-day offset, then run them.**
-
-```ts
-const sixAttachments = Array.from({ length: 6 }, (_, index) => ({ fileId: `f_${index}`, name: `f_${index}.pdf`, mimeType: 'application/pdf' as const, sizeBytes: 1 }));
-const tooManyAttachments = {
-  title: '归档资料', note: '', categoryId: null, priority: 'medium' as const, dueAtMs: null,
-  timezone: 'Asia/Shanghai', reminder: { enabled: false, offset: 'at_due' as const, triggerAtMs: null, status: 'off' as const, templateId: null, subscriptionGrantedAtMs: null },
-  subtasks: [], attachments: sixAttachments,
-};
-expect(calculateReminderTriggerAtMs(86_400_000, '1d')).toBe(0);
-expect(taskInputSchema.safeParse(tooManyAttachments).success).toBe(false);
-```
-
-Run: `npx vitest run tests/unit/schemas.test.ts tests/unit/reminder.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 5: Commit the contract boundary.**
-
-```powershell
-git add shared tests/unit
-git commit -m "feat: define Flowlist task domain contracts"
-```
-
-### Task 3: Implement CloudBase user bootstrap and category management
+### Task 3: 瀹炵幇寰俊鐧诲綍鍜?Bearer 鎺堟潈
 
 **Files:**
-- Create: `cloudfunctions/bootstrap-user/index.ts`
-- Create: `cloudfunctions/bootstrap-user/package.json`
-- Create: `cloudfunctions/categories/index.ts`
-- Create: `cloudfunctions/categories/package.json`
-- Create: `cloudfunctions/_shared/db.ts`
-- Create: `miniprogram/services/cloud.ts`
-- Create: `miniprogram/services/categories.ts`
-- Create: `miniprogram/stores/session.ts`
-- Create: `tests/cloudfunctions/bootstrap-user.test.ts`
-- Create: `tests/cloudfunctions/categories.test.ts`
 
-**Interfaces:**
-- Consumes: `Category` and `CloudResult<T>` from Task 2.
-- Produces: `bootstrapUser(): Promise<{ categories: Category[]; timezone: string }>` and `saveCategory(input: { id?: string; name: string; color: string }): Promise<Category>` for Task 7 and Task 10.
+- Create: backend/app/api/auth.py, backend/app/core/security.py, backend/app/schemas/auth.py, backend/app/services/auth.py, backend/tests/integration/test_auth.py
+- Modify: backend/app/main.py, backend/app/models/user.py
+- Test: backend/tests/integration/test_auth.py
 
-- [ ] **Step 1: Write a failing bootstrap test using a mocked CloudBase context.**
+**Interfaces:** POST /auth/wechat-login銆丳OST /auth/refresh 鍜?get_current_user銆?
+- [ ] **Step 1: 鍐欏け璐ユ祴璇曘€?*
 
-```ts
-import { describe, expect, it, vi } from 'vitest';
-import { bootstrapUserHandler } from '../../cloudfunctions/bootstrap-user/index';
-import type { Db } from '../../cloudfunctions/_shared/db';
+    async def test_login_creates_user_and_returns_tokens(client, wechat_stub):
+        response = await client.post('/flowlist/api/v1/auth/wechat-login', json={'code': 'wx-code'})
+        assert response.status_code == 200
+        assert response.json()['user']['openid'] == 'mock-openid'
 
-function createFakeDb(): Db {
-  const users: Array<{ openid: string; timezone: string }> = [];
-  const categories: Array<Category & { ownerOpenid: string }> = [];
-  return {
-    users: {
-      findOne: async ({ openid }) => users.find((user) => user.openid === openid) ?? null,
-      insert: async (user) => { users.push(user); },
-    },
-    categories: {
-      findOne: async ({ ownerOpenid, name }) => categories.find((item) => item.ownerOpenid === ownerOpenid && item.name === name) ?? null,
-      findMany: async ({ ownerOpenid }) => categories.filter((item) => item.ownerOpenid === ownerOpenid).sort((a, b) => a.sortOrder - b.sortOrder),
-      insert: async (category) => { categories.push({ ...category, id: `c_${categories.length + 1}` }); },
-    },
-    tasks: {} as Db['tasks'],
-    notifications: {} as Db['notifications'],
-    reminderDeliveries: {} as Db['reminderDeliveries'],
-  };
-}
+    async def test_protected_route_rejects_missing_bearer(client):
+        response = await client.get('/flowlist/api/v1/tasks')
+        assert response.status_code == 401
+        assert response.json()['code'] == 'AUTHENTICATION_FAILED'
 
-it('creates Work and Personal only for a first-time OpenID', async () => {
-  const db = createFakeDb();
-  const result = await bootstrapUserHandler({}, { openid: 'o_user_1', db, nowMs: 100 });
-  expect(result.ok).toBe(true);
-  if (result.ok) expect(result.data.categories.map((item) => item.name)).toEqual(['Work', 'Personal']);
-});
-```
+- [ ] **Step 2: 纭澶辫触銆?*
 
-- [ ] **Step 2: Run the cloud-function tests to verify the handler does not exist.**
+Run: cd backend; uv run pytest tests/integration/test_auth.py -q
+Expected: FAIL锛岃璇佺鐐瑰皻涓嶅瓨鍦ㄣ€?
+- [ ] **Step 3: 瀹炵幇鐧诲綍鍜岀画鏈熴€?*
 
-Run: `npx vitest run tests/cloudfunctions/bootstrap-user.test.ts tests/cloudfunctions/categories.test.ts`
+鐢?httpx 璋冨井淇?code2Session锛屾祴璇曚娇鐢?dependency override銆傛寜 OpenID get-or-create 鐢ㄦ埛锛涜闂?token 30 鍒嗛挓銆佸埛鏂?token 30 澶╋紝payload 浠呭惈 sub,type,exp,jti銆傛墍鏈夎姹傜敓鎴?X-Request-ID锛涙棩蹇椾笉寰楀惈 code銆乻ession_key銆乼oken 鎴?AppSecret銆?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-Expected: FAIL because the cloud-function handlers do not exist.
+Run: cd backend; uv run pytest tests/integration/test_auth.py -q
+Expected: PASS銆?
+    git add backend
+    git commit -m "feat: add WeChat authentication and tokens"
+    git push origin master
 
-- [ ] **Step 3: Implement ownership-derived user and category handlers.**
-
-```ts
-// cloudfunctions/bootstrap-user/index.ts
-export async function bootstrapUserHandler(
-  _event: Record<string, never>,
-  deps: { openid: string; db: Db; nowMs: number },
-): Promise<CloudResult<{ categories: Category[]; timezone: string }>> {
-  const user = await deps.db.users.findOne({ openid: deps.openid });
-  if (!user) {
-    await deps.db.users.insert({ openid: deps.openid, timezone: 'Asia/Shanghai', createdAtMs: deps.nowMs });
-    await deps.db.categories.insert({ ownerOpenid: deps.openid, name: 'Work', color: '#3B82F6', isSystem: true, sortOrder: 0 });
-    await deps.db.categories.insert({ ownerOpenid: deps.openid, name: 'Personal', color: '#10B981', isSystem: true, sortOrder: 1 });
-  }
-  const categories = await deps.db.categories.findMany({ ownerOpenid: deps.openid }, { sortOrder: 1 });
-  return { ok: true, data: { categories, timezone: user?.timezone ?? 'Asia/Shanghai' } };
-}
-```
-
-Create `cloudfunctions/_shared/db.ts` using the exact `Db` and `getDb()` adapter shown in **Shared Interfaces**, and import `Db` from that file in every cloud-function handler.
-
-Implement `categoriesHandler(event, deps)` with actions `list`, `save`, and `delete`. Reject blank or duplicate names with `VALIDATION_ERROR`; reject deleting an `isSystem` category or a category referenced by a task with `CONFLICT`.
-
-```ts
-export async function categoriesHandler(
-  event: { action: 'list' | 'save' | 'delete'; input: { id?: string; name?: string; color?: string } },
-  deps: { openid: string; db: Db },
-): Promise<CloudResult<Category[] | Category | void>> {
-  if (event.action === 'list') return { ok: true, data: await deps.db.categories.findMany({ ownerOpenid: deps.openid }, { sortOrder: 1 }) };
-  if (event.action === 'save') return saveOwnedCategory(event.input, deps);
-  return deleteOwnedCategory(event.input.id ?? '', deps);
-}
-```
-
-- [ ] **Step 4: Implement the Mini Program cloud client and category service.**
-
-```ts
-// miniprogram/services/cloud.ts
-export async function callCloud<T>(name: string, data: unknown): Promise<T> {
-  const result = await wx.cloud.callFunction({ name, data });
-  const payload = result.result as CloudResult<T>;
-  if (!payload.ok) throw new Error(`${payload.code}:${payload.message}`);
-  return payload.data;
-}
-```
-
-```ts
-// miniprogram/services/categories.ts
-export const bootstrapUser = () => callCloud<{ categories: Category[]; timezone: string }>('bootstrap-user', {});
-export const saveCategory = (input: { id?: string; name: string; color: string }) => callCloud<Category>('categories', { action: 'save', input });
-```
-
-- [ ] **Step 5: Run tests and type-check.**
-
-Run:
-
-```powershell
-npx vitest run tests/cloudfunctions/bootstrap-user.test.ts tests/cloudfunctions/categories.test.ts
-npx tsc --noEmit
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit the identity and category baseline.**
-
-```powershell
-git add cloudfunctions miniprogram/services miniprogram/stores tests/cloudfunctions
-git commit -m "feat: add private user bootstrap and categories"
-```
-
-### Task 4: Implement task list and create-task cloud contracts
+### Task 4: 瀹炵幇绉佹湁鍒嗙被鍜屼换鍔?CRUD
 
 **Files:**
-- Create: `cloudfunctions/tasks/index.ts`
-- Create: `cloudfunctions/tasks/package.json`
-- Create: `miniprogram/services/tasks.ts`
-- Create: `tests/cloudfunctions/tasks-list.test.ts`
-- Create: `tests/cloudfunctions/tasks-save.test.ts`
 
-**Interfaces:**
-- Consumes: `TaskInput`, `Task`, `TaskListInput`, `TaskListOutput`, `taskInputSchema`, `calculateReminderTriggerAtMs`, and `callCloud<T>`.
-- Produces: `listTasks(input: TaskListInput): Promise<TaskListOutput>` and `saveTask(input: SaveTaskInput): Promise<Task>` for Task 7 and Task 8.
+- Create: backend/app/api/categories.py, backend/app/api/tasks.py, backend/app/schemas/category.py, backend/app/schemas/task.py, backend/app/services/categories.py, backend/app/services/tasks.py, backend/tests/integration/test_tasks.py
+- Modify: backend/app/main.py, backend/app/models/category.py, backend/app/models/task.py, backend/app/models/reminder.py
+- Test: backend/tests/integration/test_tasks.py
 
-- [ ] **Step 1: Write failing task-list tests for ownership and today filtering.**
+**Interfaces:** 鍒嗙被 CRUD 鍜屼换鍔?list/create/read/update/complete/delete API銆傛洿鏂拌姹傚惈 version锛屾垚鍔熸椂鐗堟湰閫掑銆?
+- [ ] **Step 1: 鍐欏け璐ョ殑褰掑睘涓庡啿绐佹祴璇曘€?*
 
-```ts
-const validReminder = (overrides: Partial<Reminder> = {}): Reminder => ({
-  enabled: false,
-  offset: 'at_due',
-  triggerAtMs: null,
-  status: 'off',
-  templateId: null,
-  subscriptionGrantedAtMs: null,
-  ...overrides,
-});
+    async def test_other_user_cannot_read_task(client, task_of_user_a, token_b):
+        response = await client.get(f'/flowlist/api/v1/tasks/{task_of_user_a.id}', headers={'Authorization': f'Bearer {token_b}'})
+        assert response.status_code == 404
 
-const validSaveInput = (overrides: Partial<SaveTaskInput> = {}): SaveTaskInput => ({
-  title: '整理客户方案', note: '', categoryId: null, priority: 'medium', dueAtMs: null,
-  timezone: 'Asia/Shanghai', reminder: validReminder(), subtasks: [], attachments: [], subscriptionAccepted: false,
-  ...overrides,
-});
+    async def test_stale_version_returns_conflict(client, task, token):
+        response = await client.patch(f'/flowlist/api/v1/tasks/{task.id}', json={'title': '鏂版爣棰?, 'version': 0}, headers={'Authorization': f'Bearer {token}'})
+        assert response.status_code == 409
 
-const createTasksDb = (tasks: Array<Task & { ownerOpenid: string }>) => ({ tasks }) as unknown as Db;
+- [ ] **Step 2: 纭澶辫触銆?*
 
-const deps = (overrides: Partial<{ openid: string; db: Db; nowMs: number; timezone: string }> = {}) => ({
-  openid: 'o_current', db: createTasksDb([]), nowMs: 1_000, timezone: 'Asia/Shanghai', ...overrides,
-});
+Run: cd backend; uv run pytest tests/integration/test_tasks.py -q
+Expected: FAIL锛岀鐐瑰皻涓嶅瓨鍦ㄣ€?
+- [ ] **Step 3: 瀹炵幇浠诲姟鍩熴€?*
 
-it('returns only the current users tasks in the today scope', async () => {
-  const db = createTasksDb([
-    { _id: 'a', ownerOpenid: 'o_current', title: 'Today', dueAtMs: 1_000, status: 'todo' },
-    { _id: 'b', ownerOpenid: 'o_other', title: 'Other user', dueAtMs: 1_000, status: 'todo' },
-  ]);
-  const result = await tasksHandler({ action: 'list', input: { scope: 'today', keyword: '', selectedDateMs: 0, cursor: null, limit: 20 } }, { openid: 'o_current', db, nowMs: 1_000, timezone: 'Asia/Shanghai' });
-  expect(result).toMatchObject({ ok: true, data: { items: [{ id: 'a', title: 'Today' }] } });
-});
-```
+鍒涘缓鐢ㄦ埛鏃剁敓鎴?Work 涓?Personal銆傚垪琛ㄦ敮鎸?scope=today|upcoming|all銆佸叧閿瘝銆佹棩鏈熴€佸垎绫汇€佺姸鎬佷笌鍒嗛〉銆傛瘡涓煡璇㈡樉寮忓姞鍏?Task.user_id == current_user.id銆傛洿鏂?SQL 浣跨敤 id銆乽ser_id銆乿ersion锛涙棤鍙楀奖鍝嶈鍒欒繑鍥?409銆備繚瀛樹换鍔″湪鍚屼竴浜嬪姟鍚屾鏂板缓銆佹洿鏂版垨鍙栨秷 reminder銆?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-- [ ] **Step 2: Write the failing save-task test for reminder trigger calculation.**
+Run: cd backend; uv run pytest tests/integration/test_tasks.py -q
+Expected: PASS锛岃秺鏉冩案杩滆繑鍥?404銆?
+    git add backend
+    git commit -m "feat: add private task and category APIs"
+    git push origin master
 
-```ts
-it('stores a pending reminder when the due time and accepted subscription are present', async () => {
-  const result = await tasksHandler({ action: 'save', input: validSaveInput({ dueAtMs: 3_600_000, reminder: validReminder({ enabled: true, offset: '30m' }), subscriptionAccepted: true }) }, deps());
-  expect(result).toMatchObject({ ok: true, data: { reminder: { triggerAtMs: 1_800_000, status: 'pending' } } });
-});
-```
+### Task 5: 瀹炵幇绉佹湁 OSS 鐩翠紶鍜岄檮浠剁敓鍛藉懆鏈?
+**Files:**
 
-- [ ] **Step 3: Run tests to verify the task handler is absent.**
+- Create: backend/app/api/attachments.py, backend/app/schemas/attachment.py, backend/app/services/attachments.py, backend/tests/unit/test_attachments.py, backend/tests/integration/test_attachment_api.py
+- Modify: backend/app/main.py, backend/app/models/attachment.py
+- Test: backend/tests/unit/test_attachments.py, backend/tests/integration/test_attachment_api.py
 
-Run: `npx vitest run tests/cloudfunctions/tasks-list.test.ts tests/cloudfunctions/tasks-save.test.ts`
+**Interfaces:** POST /tasks/{task_id}/attachments/upload-policy锛孭OST /attachments/{attachment_id}/confirm锛孏ET /attachments/{attachment_id}/download-url锛孌ELETE /attachments/{attachment_id}銆?
+- [ ] **Step 1: 鍐欏け璐ユ祴璇曘€?*
 
-Expected: FAIL because `tasksHandler` does not exist.
+    def test_object_key_is_user_and_task_scoped():
+        key = build_object_key(UUID('00000000-0000-0000-0000-000000000001'), UUID('00000000-0000-0000-0000-000000000002'))
+        assert key.startswith('flowlist/00000000-0000-0000-0000-000000000001/00000000-0000-0000-0000-000000000002/')
 
-- [ ] **Step 4: Implement `list` and `save` actions in `tasksHandler`.**
+    async def test_upload_policy_requires_task_ownership(client, token_b, task_of_user_a):
+        response = await client.post(f'/flowlist/api/v1/tasks/{task_of_user_a.id}/attachments/upload-policy', json={'filename':'a.pdf','mimeType':'application/pdf','sizeBytes':20}, headers={'Authorization': f'Bearer {token_b}'})
+        assert response.status_code == 404
 
-```ts
-export async function tasksHandler(
-  event: { action: 'list' | 'save'; input: TaskListInput | SaveTaskInput },
-  deps: { openid: string; db: Db; nowMs: number; timezone: string },
-): Promise<CloudResult<TaskListOutput | Task>> {
-  if (event.action === 'list') return listOwnedTasks(event.input as TaskListInput, deps);
-  return saveOwnedTask(event.input as SaveTaskInput, deps);
-}
-```
+- [ ] **Step 2: 纭澶辫触銆?*
 
-`listOwnedTasks()` must start every query with `{ ownerOpenid: deps.openid }`, trim the keyword, cap `limit` at 50, and return tasks sorted by incomplete-first then `dueAtMs` ascending. `saveOwnedTask()` must parse `TaskInput` using `taskInputSchema`, verify category ownership when `categoryId` is non-null, calculate `triggerAtMs` only when `reminder.enabled` and `dueAtMs` are present, and set reminder status to `pending` only when `subscriptionAccepted` is true. Otherwise set `skipped`.
+Run: cd backend; uv run pytest tests/unit/test_attachments.py tests/integration/test_attachment_api.py -q
+Expected: FAIL銆?
+- [ ] **Step 3: 瀹炵幇绛惧彂涓庣‘璁ゃ€?*
 
-- [ ] **Step 5: Add the Mini Program service functions and run tests.**
+鏍￠獙 MIME銆?0 MiB 鍜?5 涓檮浠朵笂闄愩€傜鍙戜粎璇ュ璞″彲鐢ㄣ€?0 鍒嗛挓杩囨湡鐨?OSS POST policy锛涚‘璁ゆ椂浣跨敤鍙浛鎹?OSS client 鐨?head_object 鏍￠獙瀵硅薄瀛樺湪涓庡ぇ灏忋€備笅杞界鍚?5 鍒嗛挓锛涘垹闄ゆ暟鎹簱璁板綍鍚庢姇閫掑彲閲嶈瘯 OSS 鍒犻櫎浠诲姟銆傝嚜鍔ㄦ祴璇曚笉寰椾娇鐢ㄧ湡瀹?OSS 瀵嗛挜銆?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-```ts
-// miniprogram/services/tasks.ts
-export const listTasks = (input: TaskListInput) => callCloud<TaskListOutput>('tasks', { action: 'list', input });
-export const saveTask = (input: SaveTaskInput) => callCloud<Task>('tasks', { action: 'save', input });
-```
+Run: cd backend; uv run pytest tests/unit/test_attachments.py tests/integration/test_attachment_api.py -q
+Expected: PASS銆?
+    git add backend
+    git commit -m "feat: add private OSS attachment uploads"
+    git push origin master
 
-Run:
-
-```powershell
-npx vitest run tests/cloudfunctions/tasks-list.test.ts tests/cloudfunctions/tasks-save.test.ts
-npx tsc --noEmit
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit task creation and listing.**
-
-```powershell
-git add cloudfunctions/tasks miniprogram/services/tasks.ts tests/cloudfunctions
-git commit -m "feat: add private task creation and listing"
-```
-
-### Task 5: Add task update, completion, deletion, subtasks, and attachment registration
+### Task 6: 瀹炵幇鎻愰啋銆侀€氱煡鍜?Celery 璋冨害
 
 **Files:**
-- Modify: `cloudfunctions/tasks/index.ts`
-- Create: `cloudfunctions/task-files/index.ts`
-- Create: `cloudfunctions/task-files/package.json`
-- Modify: `miniprogram/services/tasks.ts`
-- Create: `miniprogram/services/upload.ts`
-- Create: `tests/cloudfunctions/tasks-mutation.test.ts`
-- Create: `tests/cloudfunctions/task-files.test.ts`
 
-**Interfaces:**
-- Consumes: `tasksHandler`, `Task`, `TaskInput`, `TaskAttachment`, and `taskInputSchema`.
-- Produces: `toggleTask(id: string, completed: boolean): Promise<Task>`, `deleteTask(id: string): Promise<void>`, and `registerAttachment(input: { taskId: string; attachment: TaskAttachment }): Promise<TaskAttachment>`.
+- Create: backend/app/api/notifications.py, backend/app/services/reminders.py, backend/app/workers/celery_app.py, backend/app/workers/tasks.py, backend/tests/unit/test_reminders.py, backend/tests/integration/test_notifications.py
+- Modify: backend/app/models/reminder.py, backend/app/models/notification.py, compose.yaml
+- Test: backend/tests/unit/test_reminders.py, backend/tests/integration/test_notifications.py
 
-- [ ] **Step 1: Write failing mutation tests.**
+**Interfaces:** GET /notifications銆丳ATCH /notifications/{id}/read銆丏ELETE /notifications 鍜屽箓绛?deliver_due_reminders銆?
+- [ ] **Step 1: 鍐欏け璐ュ箓绛夋祴璇曘€?*
 
-```ts
-it('cannot toggle a task owned by another user', async () => {
-  const result = await tasksHandler({ action: 'toggle', input: { id: 'other-task', completed: true } }, deps({ openid: 'o_current' }));
-  expect(result).toEqual({ ok: false, code: 'NOT_FOUND', message: '任务不存在' });
-});
+    async def test_due_reminder_creates_one_notification_once(session, due_reminder):
+        first = await deliver_due_reminders(session, now=due_reminder.remind_at)
+        second = await deliver_due_reminders(session, now=due_reminder.remind_at)
+        assert first.created_count == 1
+        assert second.created_count == 0
 
-it('marks completion time when completing a task', async () => {
-  const result = await tasksHandler({ action: 'toggle', input: { id: 'owned-task', completed: true } }, deps({ nowMs: 500 }));
-  expect(result).toMatchObject({ ok: true, data: { status: 'completed', completedAtMs: 500 } });
-});
-```
+- [ ] **Step 2: 纭澶辫触銆?*
 
-- [ ] **Step 2: Run the mutation tests to verify the actions are absent.**
+Run: cd backend; uv run pytest tests/unit/test_reminders.py tests/integration/test_notifications.py -q
+Expected: FAIL銆?
+- [ ] **Step 3: 瀹炵幇 Worker銆?*
 
-Run: `npx vitest run tests/cloudfunctions/tasks-mutation.test.ts tests/cloudfunctions/task-files.test.ts`
+Beat 姣忓垎閽熸姇閫掋€俉orker 鍘熷瓙鍦板皢 pending reminder 璁ら涓?processing锛涙垚鍔熸椂鍐欓€氱煡骞惰 sent锛屽紓甯稿鍔?attempts 骞惰 failed锛屾渶澶?3 娆°€傞€氱煡鎵€鏈夋搷浣滄寜 user_id 杩囨护銆傚閮ㄨ闃呮秷鎭粎淇濈暀 feature flag锛屼笉鍙栧緱妯℃澘鍜岀敤鎴锋巿鏉冩椂涓嶅彂閫併€?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-Expected: FAIL because the `toggle`, `delete`, and file handlers are absent.
+Run: cd backend; uv run pytest tests/unit/test_reminders.py tests/integration/test_notifications.py -q
+Run: docker compose up -d worker beat; docker compose ps
+Expected: PASS锛寃orker 涓?beat running銆?
+    git add backend compose.yaml
+    git commit -m "feat: add task reminders and notifications"
+    git push origin master
 
-- [ ] **Step 3: Implement the mutation actions and attachment guard.**
+### Task 7: 瀹炵幇灏忕▼搴?API 瀹㈡埛绔€佷細璇濆拰 MobX 鐘舵€?
+**Files:**
 
-Add `toggle`, `delete`, and `update` action variants to `tasksHandler`. Every mutation must locate the task by `{ _id: id, ownerOpenid: deps.openid }`. `toggle` sets `{ status: completed ? 'completed' : 'todo', completedAtMs: completed ? deps.nowMs : null }`. `delete` deletes the task, its `notifications`, its `reminderDeliveries`, and calls the file cleanup handler with its attachment file IDs.
+- Create: miniprogram/services/api.ts, miniprogram/services/auth.ts, miniprogram/services/tasks.ts, miniprogram/services/categories.ts, miniprogram/services/attachments.ts, miniprogram/services/notifications.ts, miniprogram/stores/session.ts, miniprogram/stores/tasks.ts, miniprogram/utils/errors.ts, miniprogram/utils/storage.ts, miniprogram/config.ts, tests/unit/api.test.ts, tests/unit/session.test.ts, tests/unit/tasks-store.test.ts
+- Modify: miniprogram/app.ts
+- Test: tests/unit/api.test.ts, tests/unit/session.test.ts, tests/unit/tasks-store.test.ts
 
-Replace the Task 4 handler signature with this expanded, type-consistent signature:
+**Interfaces:** request<T>銆乪nsureSession 鍜?taskStore.refresh銆?
+- [ ] **Step 1: 鍐欏け璐ョ殑 401 閲嶇櫥娴嬭瘯銆?*
 
-```ts
-export type TasksAction = 'list' | 'save' | 'update' | 'toggle' | 'delete' | 'calendar';
-export type TaskMutationInput = { id: string; completed?: boolean; patch?: TaskInput };
+    it('retries exactly once after 401', async () => {
+      mockRequest.mockResolvedValueOnce({ statusCode: 401 }).mockResolvedValueOnce({ statusCode: 200, data: { items: [] } });
+      await expect(request('/tasks', { method: 'GET' })).resolves.toEqual({ ok: true, data: { items: [] } });
+      expect(mockLogin).toHaveBeenCalledTimes(1);
+    });
 
-export async function tasksHandler(
-  event: { action: TasksAction; input: TaskListInput | SaveTaskInput | TaskMutationInput | { monthStartMs: number; monthEndMs: number } },
-  deps: { openid: string; db: Db; nowMs: number; timezone: string },
-): Promise<CloudResult<TaskListOutput | Task | Task[] | void>> {
-  if (event.action === 'list') return listOwnedTasks(event.input as TaskListInput, deps);
-  if (event.action === 'save') return saveOwnedTask(event.input as SaveTaskInput, deps);
-  if (event.action === 'update') return updateOwnedTask(event.input as TaskMutationInput, deps);
-  if (event.action === 'toggle') return toggleOwnedTask(event.input as TaskMutationInput, deps);
-  if (event.action === 'delete') return deleteOwnedTask(event.input as TaskMutationInput, deps);
-  return listCalendarTasks(event.input as { monthStartMs: number; monthEndMs: number }, deps);
-}
-```
+- [ ] **Step 2: 纭澶辫触銆?*
 
-```ts
-// cloudfunctions/task-files/index.ts
-const allowedMimeTypes = new Set(['image/jpeg', 'image/png', 'application/pdf']);
+Run: npm test -- tests/unit/api.test.ts tests/unit/session.test.ts tests/unit/tasks-store.test.ts
+Expected: FAIL銆?
+- [ ] **Step 3: 瀹炵幇浼氳瘽灞傘€?*
 
-export function validateAttachment(attachment: TaskAttachment): CloudResult<TaskAttachment> {
-  if (!allowedMimeTypes.has(attachment.mimeType) || attachment.sizeBytes > 10 * 1024 * 1024) {
-    return { ok: false, code: 'UPLOAD_REJECTED', message: '仅支持 10MB 以内的图片或 PDF' };
-  }
-  return { ok: true, data: attachment };
-}
-```
+ensureSession 鐢?wx.login 璋冪櫥褰?API锛屽皢 token 鍐欏叆鏈湴 storage銆傛瘡娆?request 杩藉姞 Bearer token锛?01 鏃舵竻闄?token銆侀噸鏂扮櫥褰曘€佷粎閲嶈瘯鍘熻姹備竴娆°€俠ase URL 鍐欏湪涓嶅惈鏈哄瘑鐨?config.ts锛屽舰濡?https://浣犵殑鍩熷悕/flowlist/api/v1锛岄儴缃插墠鏇挎崲銆傞〉闈笉寰楃洿鎺?wx.request銆?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-- [ ] **Step 4: Implement client upload sequencing.**
+Run: npm test -- tests/unit/api.test.ts tests/unit/session.test.ts tests/unit/tasks-store.test.ts
+Expected: PASS銆?
+    git add miniprogram tests package.json package-lock.json
+    git commit -m "feat: add mini program session and API client"
+    git push origin master
 
-```ts
-// miniprogram/services/upload.ts
-export async function uploadAttachment(taskId: string, filePath: string, name: string, mimeType: TaskAttachment['mimeType']): Promise<TaskAttachment> {
-  const info = await wx.getFileInfo({ filePath });
-  const upload = await wx.cloud.uploadFile({ cloudPath: `tasks/${taskId}/${Date.now()}-${name}`, filePath });
-  return callCloud<TaskAttachment>('task-files', {
-    action: 'register',
-    input: { taskId, attachment: { fileId: upload.fileID, name, mimeType, sizeBytes: info.size } },
-  });
-}
-```
-
-- [ ] **Step 5: Run the mutation and upload tests.**
-
-Run: `npx vitest run tests/cloudfunctions/tasks-mutation.test.ts tests/cloudfunctions/task-files.test.ts`
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit task mutations and attachment protection.**
-
-```powershell
-git add cloudfunctions miniprogram/services tests/cloudfunctions
-git commit -m "feat: add task mutations and attachment validation"
-```
-
-### Task 6: Implement notifications, notification read state, and calendar query contracts
+### Task 8: 瀹炵幇棣栭〉銆佷换鍔＄紪杈戝拰璇︽儏
 
 **Files:**
-- Create: `cloudfunctions/notifications/index.ts`
-- Create: `cloudfunctions/notifications/package.json`
-- Modify: `cloudfunctions/tasks/index.ts`
-- Create: `miniprogram/services/notifications.ts`
-- Create: `tests/cloudfunctions/notifications.test.ts`
-- Create: `tests/cloudfunctions/calendar.test.ts`
 
-**Interfaces:**
-- Consumes: `AppNotification`, `TaskListOutput`, `callCloud<T>`, and `tasksHandler`.
-- Produces: `listNotifications(cursor: string | null): Promise<{ items: AppNotification[]; nextCursor: string | null }>`, `markNotificationRead(id: string): Promise<void>`, `clearNotifications(): Promise<void>`, and `listCalendarTasks(monthStartMs: number, monthEndMs: number): Promise<Task[]>`.
+- Create: miniprogram/pages/home/index.ts, miniprogram/pages/home/index.wxml, miniprogram/pages/home/index.wxss, miniprogram/pages/home/index.json, miniprogram/pages/task-form/index.ts, miniprogram/pages/task-form/index.wxml, miniprogram/pages/task-form/index.wxss, miniprogram/pages/task-form/index.json, miniprogram/pages/task-detail/index.ts, miniprogram/pages/task-detail/index.wxml, miniprogram/pages/task-detail/index.wxss, miniprogram/pages/task-detail/index.json, miniprogram/components/task-card/index.ts, miniprogram/components/task-card/index.wxml, miniprogram/components/task-card/index.wxss, miniprogram/components/task-card/index.json, miniprogram/components/task-editor/index.ts, miniprogram/components/task-editor/index.wxml, miniprogram/components/task-editor/index.wxss, miniprogram/components/task-editor/index.json, tests/unit/task-editor.test.ts
+- Test: tests/unit/task-editor.test.ts
 
-- [ ] **Step 1: Write failing notification and calendar tests.**
+**Interfaces:** validateTaskDraft銆佷换鍔″崱鐗?toggle/open 浜嬩欢銆佺紪杈戝櫒 TaskInput 鍜?version銆?
+- [ ] **Step 1: 鍐欏け璐ヨ〃鍗曟祴璇曘€?*
 
-```ts
-it('marks only the owners notification as read', async () => {
-  const result = await notificationsHandler({ action: 'read', input: { id: 'n-other' } }, deps({ openid: 'o_current' }));
-  expect(result).toEqual({ ok: false, code: 'NOT_FOUND', message: '通知不存在' });
-});
+    import { validateTaskDraft } from '../../miniprogram/components/task-editor/index';
+    it('requires a non-blank title', () => expect(validateTaskDraft({ title: '   ' } as never)).toBe('璇疯緭鍏ヤ换鍔℃爣棰?));
 
-it('returns dated tasks inside a closed month range', async () => {
-  const result = await tasksHandler({ action: 'calendar', input: { monthStartMs: 1_000, monthEndMs: 2_000 } }, deps());
-  expect(result).toMatchObject({ ok: true, data: [{ id: 'in-month' }] });
-});
-```
+- [ ] **Step 2: 纭澶辫触銆?*
 
-- [ ] **Step 2: Run tests to verify the handlers are absent.**
+Run: npm test -- tests/unit/task-editor.test.ts
+Expected: FAIL銆?
+- [ ] **Step 3: 瀹炵幇鏍稿績 UI銆?*
 
-Run: `npx vitest run tests/cloudfunctions/notifications.test.ts tests/cloudfunctions/calendar.test.ts`
+棣栭〉鏈変粖鏃?鍗冲皢鍒版湡/鍏ㄩ儴绛涢€夈€佹悳绱€佸畬鎴愬紑鍏冲拰鏂板鍏ュ彛銆傜紪杈戝櫒鏀寔鏍囬銆佹弿杩般€佸垎绫汇€佷紭鍏堢骇銆佹埅姝㈡椂闂村拰鎻愰啋銆傝鎯呴〉鍔犺浇 id锛屾樉绀洪檮浠讹紱409 鏄剧ず鈥滀换鍔″凡鍦ㄥ叾浠栬澶囦慨鏀癸紝璇峰埛鏂板悗閲嶈瘯鈥濓紱鍒犻櫎浣跨敤 wx.showModal 浜屾纭銆?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-Expected: FAIL because the notification and calendar actions are absent.
+Run: npm test -- tests/unit/task-editor.test.ts
+Run: npx tsc --noEmit
+Expected: PASS锛涘紑鍙戣€呭伐鍏峰彲杩涘叆杩欎笁涓〉闈€?
+    git add miniprogram tests
+    git commit -m "feat: add task list editor and details UI"
+    git push origin master
 
-- [ ] **Step 3: Implement ownership-scoped notification actions.**
+### Task 9: 瀹炵幇鏃ュ巻銆侀檮浠躲€侀€氱煡鍜屼釜浜鸿缃?
+**Files:**
 
-`notificationsHandler` must support `list`, `read`, and `clear`. `list` queries only `{ ownerOpenid: deps.openid }` ordered by `createdAtMs` descending. `read` updates one document matching both `_id` and `ownerOpenid`. `clear` deletes documents matching the same owner condition and no other documents.
+- Create: miniprogram/pages/calendar/index.ts, miniprogram/pages/calendar/index.wxml, miniprogram/pages/calendar/index.wxss, miniprogram/pages/calendar/index.json, miniprogram/pages/notifications/index.ts, miniprogram/pages/notifications/index.wxml, miniprogram/pages/notifications/index.wxss, miniprogram/pages/notifications/index.json, miniprogram/pages/profile/index.ts, miniprogram/pages/profile/index.wxml, miniprogram/pages/profile/index.wxss, miniprogram/pages/profile/index.json, miniprogram/pages/settings/categories/index.ts, miniprogram/pages/settings/categories/index.wxml, miniprogram/pages/settings/categories/index.wxss, miniprogram/pages/settings/categories/index.json, miniprogram/components/month-calendar/index.ts, miniprogram/components/month-calendar/index.wxml, miniprogram/components/month-calendar/index.wxss, miniprogram/components/month-calendar/index.json, miniprogram/components/empty-state/index.ts, miniprogram/components/empty-state/index.wxml, miniprogram/components/empty-state/index.wxss, miniprogram/components/empty-state/index.json, tests/unit/month-calendar.test.ts, tests/unit/errors.test.ts, docs/privacy-data-inventory.md
+- Modify: miniprogram/pages/task-form/index.ts, miniprogram/pages/task-detail/index.ts
+- Test: tests/unit/month-calendar.test.ts, tests/unit/errors.test.ts
 
-```ts
-export async function notificationsHandler(
-  event: { action: 'list' | 'read' | 'clear'; input: { id?: string; cursor?: string | null } },
-  deps: { openid: string; db: Db },
-): Promise<CloudResult<{ items: AppNotification[]; nextCursor: string | null } | void>> {
-  if (event.action === 'list') return listOwnedNotifications(event.input.cursor ?? null, deps);
-  if (event.action === 'read') return markOwnedNotificationRead(event.input.id ?? '', deps);
-  return clearOwnedNotifications(deps);
-}
-```
+**Interfaces:** buildTaskDateSet銆乽ploadAttachment 鍜?toUserMessage銆?
+- [ ] **Step 1: 鍐欏け璐ョ殑鏃ュ巻涓庨敊璇槧灏勬祴璇曘€?*
 
-Extend `tasksHandler` with the `calendar` action. It must return tasks where `ownerOpenid` matches, `dueAtMs` is not null, and `monthStartMs <= dueAtMs <= monthEndMs`.
+    it('marks dates containing due tasks', () => {
+      expect(buildTaskDateSet([{ dueAt: '2026-07-26T00:00:00Z' }], 'Asia/Shanghai')).has('2026-07-26')).toBe(true);
+    });
+    it('maps missing task to Chinese copy', () => expect(toUserMessage('NOT_FOUND')).toBe('鍐呭涓嶅瓨鍦ㄦ垨宸茶鍒犻櫎'));
 
-The `calendar` branch is the final branch in the expanded `tasksHandler()` signature introduced in Task 5; do not create a second handler or a second task-query API.
+- [ ] **Step 2: 纭澶辫触銆?*
 
-- [ ] **Step 4: Implement Mini Program notification service functions.**
+Run: npm test -- tests/unit/month-calendar.test.ts tests/unit/errors.test.ts
+Expected: FAIL銆?
+- [ ] **Step 3: 瀹炵幇椤甸潰鍜屼笂浼犮€?*
 
-```ts
-// miniprogram/services/notifications.ts
-export const listNotifications = (cursor: string | null) =>
-  callCloud<{ items: AppNotification[]; nextCursor: string | null }>('notifications', { action: 'list', input: { cursor } });
-export const markNotificationRead = (id: string) => callCloud<void>('notifications', { action: 'read', input: { id } });
-export const clearNotifications = () => callCloud<void>('notifications', { action: 'clear', input: {} });
-```
+鏃ュ巻閫夋嫨鏃ユ湡鍚庡鐢?task store銆傚浘鐗囩敤 wx.chooseMedia锛孭DF 鐢?wx.chooseMessageFile锛涘厛鎷?policy锛屼娇鐢?wx.uploadFile POST 鍒?OSS锛屽啀璋冪敤 confirm API銆傞€氱煡鍙爣宸茶銆佹墦寮€璇︽儏銆佺‘璁ゆ竻绌恒€備釜浜洪〉鍙鐞嗗垎绫汇€佹煡鐪嬫彁閱掑拰闅愮璇存槑銆佸彧娓呮湰鍦扮紦瀛樸€?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-- [ ] **Step 5: Run tests and type-check.**
+Run: npm test -- tests/unit/month-calendar.test.ts tests/unit/errors.test.ts
+Run: npx tsc --noEmit
+Expected: PASS銆?
+    git add miniprogram tests docs/privacy-data-inventory.md
+    git commit -m "feat: add calendar attachments and settings UI"
+    git push origin master
 
-Run:
-
-```powershell
-npx vitest run tests/cloudfunctions/notifications.test.ts tests/cloudfunctions/calendar.test.ts
-npx tsc --noEmit
-```
-
-Expected: PASS.
-
-- [ ] **Step 6: Commit calendar and in-app notification contracts.**
-
-```powershell
-git add cloudfunctions miniprogram/services tests/cloudfunctions
-git commit -m "feat: add calendar and in-app notifications"
-```
-
-### Task 7: Build the welcome, app shell, task-list, and task-editor UI
+### Task 10: 娣诲姞鐢熶骇閮ㄧ讲銆佽川閲忛棬绂佸拰鐪熸満楠屾敹
 
 **Files:**
-- Create: `miniprogram/pages/welcome/index.ts`
-- Create: `miniprogram/pages/welcome/index.wxml`
-- Create: `miniprogram/pages/welcome/index.wxss`
-- Create: `miniprogram/pages/home/index.ts`
-- Create: `miniprogram/pages/home/index.wxml`
-- Create: `miniprogram/pages/home/index.wxss`
-- Create: `miniprogram/pages/task-form/index.ts`
-- Create: `miniprogram/pages/task-form/index.wxml`
-- Create: `miniprogram/pages/task-form/index.wxss`
-- Create: `miniprogram/components/task-card/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/components/task-editor/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/components/bottom-tab-bar/index.{ts,wxml,wxss,json}`
-- Create: `tests/unit/task-editor.test.ts`
-- Create: `tests/e2e/task-create.spec.ts`
 
-**Interfaces:**
-- Consumes: `bootstrapUser`, `listTasks`, `saveTask`, `toggleTask`, `Task`, `TaskInput`, and `TaskListInput`.
-- Produces: a user can enter by WeChat identity, create a task, see it in the list, search it, and toggle completion.
+- Create: deploy/nginx/flowlist.conf, docs/deployment.md, docs/release-checklist.md, docs/wechat-review-script.md, .github/workflows/quality.yml, backend/tests/integration/test_deployment_contract.py
+- Modify: compose.yaml, .env.example, README.md
+- Test: backend/tests/integration/test_deployment_contract.py
 
-- [ ] **Step 1: Write a failing task-editor behavior test.**
+**Interfaces:** Nginx 鍙浆鍙?/flowlist/api/v1/锛孏itHub Actions 杩愯鍚庣鍜屽墠绔祴璇曘€?
+- [ ] **Step 1: 鍐欏け璐ラ儴缃茶矾鐢辨祴璇曘€?*
 
-```ts
-import { describe, expect, it } from 'vitest';
-import { buildTaskDraft } from '../../miniprogram/components/task-editor/index';
+    def test_nginx_keeps_flowlist_path_prefix():
+        config = Path('deploy/nginx/flowlist.conf').read_text(encoding='utf-8')
+        assert 'location /flowlist/api/v1/' in config
+        assert 'proxy_pass http://flowlist-api:8000;' in config
 
-describe('buildTaskDraft', () => {
-  it('returns a Chinese validation error for an empty title', () => {
-    expect(buildTaskDraft({ title: '   ' }).error).toBe('请输入任务标题');
-  });
-});
-```
+- [ ] **Step 2: 纭澶辫触銆?*
 
-- [ ] **Step 2: Run the unit test to verify the editor helper does not exist.**
+Run: cd backend; uv run pytest tests/integration/test_deployment_contract.py -q
+Expected: FAIL銆?
+- [ ] **Step 3: 瀹炵幇閮ㄧ讲鏉愭枡銆?*
 
-Run: `npx vitest run tests/unit/task-editor.test.ts`
+Nginx 浠呬唬鐞?/flowlist/api/v1/ 鑷?flowlist-api:8000銆傞儴缃叉枃妗ｅ寘鍚湇鍔″櫒绉佹湁 .env銆佹墜宸ュ～ RAM AccessKey銆乥uild/up銆丄lembic銆佸仴搴锋鏌ャ€佹棩蹇椼€佸浠藉拰鍥炴粴銆侰I 杩愯 npm ci銆乶pm test銆乽v sync --frozen 鍜?pytest銆傛竻鍗曡姹傚井淇″悗鍙?request/uploadFile/downloadFile HTTPS 鍩熷悕銆丄ndroid/iOS 鐪熸満楠岃瘉鍜屽瘑閽ユ壂鎻忋€?
+- [ ] **Step 4: 楠岃瘉骞舵彁浜ゃ€?*
 
-Expected: FAIL because `buildTaskDraft` does not exist.
+Run: npm test
+Run: npx tsc --noEmit
+Run: cd backend; uv run pytest -q
+Run: docker compose config
+Expected: 鍏ㄩ儴 PASS銆?
+    git add deploy docs .github compose.yaml .env.example README.md backend
+    git commit -m "chore: add Flowlist deployment and release checks"
+    git push origin master
 
-- [ ] **Step 3: Implement the minimal editor helper and UI bindings.**
+## 鑷
 
-```ts
-// miniprogram/components/task-editor/index.ts
-export function buildTaskDraft(input: Partial<TaskInput>): { value?: TaskInput; error?: string } {
-  const title = (input.title ?? '').trim();
-  if (!title) return { error: '请输入任务标题' };
-  return {
-    value: {
-      title,
-      note: input.note ?? '',
-      categoryId: input.categoryId ?? null,
-      priority: input.priority ?? 'medium',
-      dueAtMs: input.dueAtMs ?? null,
-      timezone: input.timezone ?? 'Asia/Shanghai',
-      reminder: input.reminder ?? { enabled: false, offset: 'at_due', triggerAtMs: null, status: 'off', templateId: null, subscriptionGrantedAtMs: null },
-      subtasks: input.subtasks ?? [],
-      attachments: input.attachments ?? [],
-    },
-  };
-}
-```
-
-Welcome must call `bootstrapUser()` and then `wx.reLaunch({ url: '/pages/home/index' })`. Home must maintain `scope`, `keyword`, and `items`, call `listTasks({ scope, keyword, selectedDateMs: null, cursor: null, limit: 20 })`, and debounce keyword input by 300 ms. The task form must call `buildTaskDraft()`, show its exact error via `wx.showToast`, and call `saveTask({ ...draft, subscriptionAccepted: false })` when the reminder is disabled.
-
-- [ ] **Step 4: Add an end-to-end test for the core task path.**
-
-```ts
-// tests/e2e/task-create.spec.ts
-import automator from 'miniprogram-automator';
-
-it('creates and completes a task', async () => {
-  const miniProgram = await automator.launch({ projectPath: process.cwd() });
-  const page = await miniProgram.reLaunch('/pages/task-form/index');
-  await page.$('input[data-testid="task-title"]').then((node) => node?.input('整理客户方案'));
-  await page.$('button[data-testid="save-task"]').then((node) => node?.tap());
-  await miniProgram.navigateTo('/pages/home/index');
-  expect(await page.data('items')).toContainEqual(expect.objectContaining({ title: '整理客户方案' }));
-  await miniProgram.close();
-});
-```
-
-- [ ] **Step 5: Run unit test, compile in Developer Tools, and run the e2e test.**
-
-Run:
-
-```powershell
-npx vitest run tests/unit/task-editor.test.ts
-npm run devtools:compile
-npx vitest run tests/e2e/task-create.spec.ts
-```
-
-Expected: all commands PASS; manual check confirms the home card follows the provided wireframe.
-
-- [ ] **Step 6: Commit the core user interface.**
-
-```powershell
-git add miniprogram/pages miniprogram/components tests
-git commit -m "feat: add Flowlist task list and editor UI"
-```
-
-### Task 8: Build task details, calendar, attachments, and category settings UI
-
-**Files:**
-- Create: `miniprogram/pages/task-detail/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/pages/calendar/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/pages/settings/categories/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/components/month-calendar/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/components/empty-state/index.{ts,wxml,wxss,json}`
-- Create: `tests/unit/month-calendar.test.ts`
-- Create: `tests/e2e/task-detail-calendar.spec.ts`
-
-**Interfaces:**
-- Consumes: Task 3 category services; Tasks 4 through 6 task, calendar, attachment, and notification services.
-- Produces: editable task detail, monthly date selection, category management, and image/PDF attachment controls.
-
-- [ ] **Step 1: Write a failing calendar-marker test.**
-
-```ts
-import { describe, expect, it } from 'vitest';
-import { buildTaskDateSet } from '../../miniprogram/components/month-calendar/index';
-
-it('marks each date that has at least one due task', () => {
-  expect(buildTaskDateSet([{ dueAtMs: Date.UTC(2026, 6, 12) }, { dueAtMs: Date.UTC(2026, 6, 12) }], 'Asia/Shanghai')).toEqual(new Set(['2026-07-12']));
-});
-```
-
-- [ ] **Step 2: Run tests to verify the calendar helper is absent.**
-
-Run: `npx vitest run tests/unit/month-calendar.test.ts tests/e2e/task-detail-calendar.spec.ts`
-
-Expected: FAIL because `buildTaskDateSet` and the pages do not exist.
-
-- [ ] **Step 3: Implement calendar, detail, and attachment interactions.**
-
-```ts
-// miniprogram/components/month-calendar/index.ts
-export function buildTaskDateSet(tasks: Array<{ dueAtMs: number | null }>, timezone: string): Set<string> {
-  return new Set(tasks.filter((task) => task.dueAtMs !== null).map((task) => formatDateKey(task.dueAtMs as number, timezone)));
-}
-```
-
-Task detail must load its `id` from `options.id`, use the existing `saveTask`, `toggleTask`, and `deleteTask` functions, and require `wx.showModal({ title: '删除任务', content: '删除后无法恢复，确定删除吗？' })` confirmation before deletion. Category settings must call `saveCategory()` and surface a `CONFLICT` response as `该分类仍有关联任务，暂时无法删除`.
-
-For attachment selection, call `wx.chooseMedia()` for images and `wx.chooseMessageFile({ type: 'file', extension: ['pdf'] })` for PDFs. Pass the selected path through `uploadAttachment()` before adding it to the draft.
-
-- [ ] **Step 4: Add an end-to-end test for date selection and deletion confirmation.**
-
-```ts
-it('shows a due task after selecting its calendar date and requires confirmation before deletion', async () => {
-  const miniProgram = await automator.launch({ projectPath: process.cwd() });
-  const calendar = await miniProgram.reLaunch('/pages/calendar/index');
-  await calendar.$('[data-testid="date-2026-07-12"]').then((node) => node?.tap());
-  expect(await calendar.data('selectedTasks')).toContainEqual(expect.objectContaining({ title: '整理客户方案' }));
-  await miniProgram.close();
-});
-```
-
-- [ ] **Step 5: Run focused tests and manually inspect attachment errors.**
-
-Run:
-
-```powershell
-npx vitest run tests/unit/month-calendar.test.ts tests/e2e/task-detail-calendar.spec.ts
-npx tsc --noEmit
-```
-
-Expected: PASS. On a real device, an 11 MB file and a non-image/non-PDF file show `仅支持 10MB 以内的图片或 PDF`.
-
-- [ ] **Step 6: Commit task detail and planning views.**
-
-```powershell
-git add miniprogram/pages miniprogram/components tests
-git commit -m "feat: add task detail calendar and attachments"
-```
-
-### Task 9: Implement opt-in subscription reminders and delivery idempotency
-
-**Files:**
-- Create: `cloudfunctions/send-due-reminders/index.ts`
-- Create: `cloudfunctions/send-due-reminders/package.json`
-- Create: `cloudfunctions/send-due-reminders/config.json`
-- Create: `miniprogram/services/reminders.ts`
-- Create: `miniprogram/utils/subscription.ts`
-- Modify: `miniprogram/pages/task-form/index.ts`
-- Modify: `miniprogram/pages/task-detail/index.ts`
-- Create: `tests/cloudfunctions/send-due-reminders.test.ts`
-- Create: `tests/unit/subscription.test.ts`
-
-**Interfaces:**
-- Consumes: `Reminder`, `Task`, `AppNotification`, `saveTask`, and the approved WeChat subscription-message template ID stored in CloudBase function environment variable `FLOWLIST_REMINDER_TEMPLATE_ID`.
-- Produces: `requestReminderSubscription(templateId: string): Promise<boolean>` and a scheduled `sendDueRemindersHandler(event, deps)` that sends each due reminder once.
-
-- [ ] **Step 1: Confirm the platform gate before writing reminder code.**
-
-In WeChat Public Platform, record the approved task-reminder template ID, attach it to the production Mini Program environment, and set the cloud-function environment variable `FLOWLIST_REMINDER_TEMPLATE_ID` to that exact value. Create a development template entry in the development environment. If no eligible template is available, stop this task, set the feature flag `subscriptionRemindersEnabled` to `false`, and remove every external-reminder claim from the release copy.
-
-- [ ] **Step 2: Write failing unit and cloud-function tests.**
-
-```ts
-// tests/unit/subscription.test.ts
-import { describe, expect, it, vi } from 'vitest';
-import { requestReminderSubscription } from '../../miniprogram/utils/subscription';
-
-it('returns true only when the approved template is accepted', async () => {
-  vi.stubGlobal('wx', { requestSubscribeMessage: vi.fn().mockResolvedValue({ tmpl_1: 'accept' }) });
-  await expect(requestReminderSubscription('tmpl_1')).resolves.toBe(true);
-});
-```
-
-```ts
-// tests/cloudfunctions/send-due-reminders.test.ts
-it('claims and sends one pending reminder only once', async () => {
-  const result = await sendDueRemindersHandler({}, deps({ nowMs: 10_000 }));
-  expect(result).toMatchObject({ sentCount: 1, skippedCount: 0 });
-  const second = await sendDueRemindersHandler({}, deps({ nowMs: 10_000 }));
-  expect(second).toMatchObject({ sentCount: 0, skippedCount: 1 });
-});
-```
-
-- [ ] **Step 3: Run tests to verify no subscription or scheduled handler exists.**
-
-Run: `npx vitest run tests/unit/subscription.test.ts tests/cloudfunctions/send-due-reminders.test.ts`
-
-Expected: FAIL because the modules do not exist.
-
-- [ ] **Step 4: Implement client subscription handling.**
-
-```ts
-// miniprogram/utils/subscription.ts
-export async function requestReminderSubscription(templateId: string): Promise<boolean> {
-  try {
-    const result = await wx.requestSubscribeMessage({ tmplIds: [templateId] });
-    return result[templateId] === 'accept';
-  } catch {
-    return false;
-  }
-}
-```
-
-When a task has `reminder.enabled === true`, task-form and task-detail must call this function immediately after the user taps save. They must then call `saveTask()` with `subscriptionAccepted` set to the returned boolean. If false, display `任务已保存，但未开启微信提醒` and retain the task with reminder status `skipped`.
-
-- [ ] **Step 5: Implement the scheduled cloud function with atomic claim.**
-
-```ts
-export async function sendDueRemindersHandler(
-  _event: Record<string, never>,
-  deps: { db: Db; nowMs: number; templateId: string; sendSubscribeMessage: (openid: string, task: Task) => Promise<void> },
-): Promise<{ sentCount: number; skippedCount: number }> {
-  const candidates = await deps.db.tasks.findDueReminders({ fromMs: deps.nowMs - 5 * 60 * 1_000, toMs: deps.nowMs });
-  let sentCount = 0;
-  let skippedCount = 0;
-  for (const task of candidates) {
-    const claimed = await deps.db.reminderDeliveries.insertIfAbsent({ taskId: task.id, triggerAtMs: task.reminder.triggerAtMs });
-    if (!claimed) { skippedCount += 1; continue; }
-    await deps.db.notifications.insert({ ownerOpenid: task.ownerOpenid, taskId: task.id, type: 'due_soon', title: '任务提醒', content: `「${task.title}」即将到期`, isRead: false, createdAtMs: deps.nowMs });
-    await deps.sendSubscribeMessage(task.ownerOpenid, task);
-    await deps.db.tasks.update({ _id: task.id }, { 'reminder.status': 'sent' });
-    sentCount += 1;
-  }
-  return { sentCount, skippedCount };
-}
-```
-
-Configure `config.json` with the five-minute schedule expression supported by the deployed CloudBase environment. The function must record an error and set reminder status `failed` when message delivery rejects, without retrying a permanently rejected subscription.
-
-- [ ] **Step 6: Run tests and conduct real-device validation.**
-
-Run: `npx vitest run tests/unit/subscription.test.ts tests/cloudfunctions/send-due-reminders.test.ts`
-
-Expected: PASS.
-
-On Android and iOS WeChat real devices, validate all four cases: accept then receive one message, reject then save task, tap message then open task detail, and run the scheduler twice without a duplicate message.
-
-- [ ] **Step 7: Commit the reminder feature.**
-
-```powershell
-git add cloudfunctions/send-due-reminders miniprogram tests
-git commit -m "feat: add opt-in task reminder delivery"
-```
-
-### Task 10: Build notification, profile, settings, privacy, and error states
-
-**Files:**
-- Create: `miniprogram/pages/notifications/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/pages/profile/index.{ts,wxml,wxss,json}`
-- Create: `miniprogram/utils/errors.ts`
-- Create: `docs/privacy-data-inventory.md`
-- Create: `tests/unit/errors.test.ts`
-- Create: `tests/e2e/profile-notifications.spec.ts`
-
-**Interfaces:**
-- Consumes: `listNotifications`, `markNotificationRead`, `clearNotifications`, `saveCategory`, `AppNotification`, and `CloudFailure` codes.
-- Produces: notification center, profile/settings UI, consistent Chinese error messages, and an auditable data inventory.
-
-- [ ] **Step 1: Write the failing error-mapping test.**
-
-```ts
-import { describe, expect, it } from 'vitest';
-import { toUserMessage } from '../../miniprogram/utils/errors';
-
-it('maps an ownership failure to a neutral Chinese message', () => {
-  expect(toUserMessage('NOT_FOUND')).toBe('内容不存在或已被删除');
-});
-```
-
-- [ ] **Step 2: Run the tests to verify error mapping and pages are absent.**
-
-Run: `npx vitest run tests/unit/errors.test.ts tests/e2e/profile-notifications.spec.ts`
-
-Expected: FAIL because `toUserMessage` and the pages do not exist.
-
-- [ ] **Step 3: Implement error mapping and notification actions.**
-
-```ts
-// miniprogram/utils/errors.ts
-export function toUserMessage(code: string): string {
-  const messages: Record<string, string> = {
-    VALIDATION_ERROR: '请检查填写内容',
-    NOT_FOUND: '内容不存在或已被删除',
-    FORBIDDEN: '无权执行此操作',
-    CONFLICT: '当前内容无法这样修改',
-    SUBSCRIPTION_REQUIRED: '任务已保存，但未开启微信提醒',
-    UPLOAD_REJECTED: '仅支持 10MB 以内的图片或 PDF',
-    INTERNAL_ERROR: '服务暂时不可用，请稍后重试',
-  };
-  return messages[code] ?? messages.INTERNAL_ERROR;
-}
-```
-
-Notification page must group by today and earlier, mark an item read before navigating to `/pages/task-detail/index?id=${taskId}`, and confirm before `clearNotifications()`. Profile page must expose category management, reminder explanation, privacy policy, and a local-only `清除本地缓存` action using `wx.clearStorage()`; it must not imply that deleting cache deletes cloud data.
-
-- [ ] **Step 4: Write the privacy data inventory.**
-
-Create `docs/privacy-data-inventory.md` with this exact inventory table:
-
-| Data | Purpose | Storage | Retention |
-| --- | --- | --- | --- |
-| WeChat OpenID | associate private records with the current user | CloudBase `users` | until user requests account deletion |
-| task text, dates, category, priority, subtasks | task-management service | CloudBase `tasks` | until user deletes the task or account |
-| image/PDF attachments | display task attachments | CloudBase storage | until task or account deletion |
-| reminder delivery status | avoid duplicate notices and show in-app notification | CloudBase `reminderDeliveries`, `notifications` | until task deletion or 90 days after delivery |
-
-- [ ] **Step 5: Run tests and verify clear-cache behavior manually.**
-
-Run:
-
-```powershell
-npx vitest run tests/unit/errors.test.ts tests/e2e/profile-notifications.spec.ts
-npx tsc --noEmit
-```
-
-Expected: PASS. Manually clear storage, relaunch, and verify cloud tasks reappear after bootstrap.
-
-- [ ] **Step 6: Commit user-facing reliability and privacy surfaces.**
-
-```powershell
-git add miniprogram/pages miniprogram/utils docs/privacy-data-inventory.md tests
-git commit -m "feat: add notifications profile and privacy handling"
-```
-
-### Task 11: Add release automation, real-device verification records, and review materials
-
-**Files:**
-- Create: `.github/workflows/quality.yml`
-- Create: `docs/release-checklist.md`
-- Create: `docs/wechat-review-script.md`
-- Create: `tests/e2e/smoke.spec.ts`
-- Modify: `package.json`
-
-**Interfaces:**
-- Consumes: all previous tests, CloudBase deployment configuration, and the final Mini Program build.
-- Produces: repeatable quality gate, reviewer test script, privacy/release checklist, and a release candidate artifact.
-
-- [ ] **Step 1: Write a failing smoke test for the final route set.**
-
-```ts
-import automator from 'miniprogram-automator';
-import { expect, it } from 'vitest';
-
-it('opens every primary MVP route without a render error', async () => {
-  const miniProgram = await automator.launch({ projectPath: process.cwd() });
-  for (const route of ['/pages/home/index', '/pages/calendar/index', '/pages/notifications/index', '/pages/profile/index']) {
-    const page = await miniProgram.reLaunch(route);
-    expect(await page.path()).toBe(route);
-  }
-  await miniProgram.close();
-});
-```
-
-- [ ] **Step 2: Run the smoke test before wiring automation.**
-
-Run: `npx vitest run tests/e2e/smoke.spec.ts`
-
-Expected: FAIL until Developer Tools automation configuration and all four pages are present.
-
-- [ ] **Step 3: Add the CI quality gate.**
-
-```yaml
-# .github/workflows/quality.yml
-name: quality
-on: [pull_request, push]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: npm }
-      - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npx vitest run tests/unit tests/cloudfunctions
-```
-
-Keep `miniprogram-automator` smoke tests in the real-device/Developer-Tools release gate when CI cannot launch the local WeChat IDE.
-
-- [ ] **Step 4: Write the exact release checklist and reviewer journey.**
-
-`docs/release-checklist.md` must require: production CloudBase environment selection; production `FLOWLIST_REMINDER_TEMPLATE_ID`; database indexes for `ownerOpenid + dueAtMs` and `ownerOpenid + updatedAtMs`; privacy-policy URL; customer-support contact; Android and iOS screenshots; development and production test accounts; a tested rollback build; and confirmation that no secret exists in repository history.
-
-`docs/wechat-review-script.md` must tell reviewers to: open the Mini Program; create `审核任务` due ten minutes later; save it; view it in home and calendar; open details; complete it; inspect notification center; upload one PDF smaller than 10 MB; and open the privacy page. It must state that subscription-message behavior requires the reviewer to accept the WeChat prompt.
-
-- [ ] **Step 5: Run the full quality gate and real-device release gate.**
-
-Run:
-
-```powershell
-npx tsc --noEmit
-npx vitest run tests/unit tests/cloudfunctions
-npx vitest run tests/e2e/smoke.spec.ts
-```
-
-Expected: all automated tests PASS. Record Android and iOS verification results in the release checklist, including subscription acceptance, rejection, and notification tap behavior.
-
-- [ ] **Step 6: Commit release readiness.**
-
-```powershell
-git add .github docs tests package.json package-lock.json
-git commit -m "chore: add Flowlist release quality gates"
-```
-
-## Self-Review
-
-### Spec coverage
-
-- Welcome and WeChat identity: Task 3 and Task 7.
-- Homepage task overview, search, filters, direct completion, and quick add: Task 4 and Task 7.
-- Task detail, editing, subtasks, attachments, save, and confirmed deletion: Task 5 and Task 8.
-- Create form fields, date-time, priority, category, and reminder: Tasks 2, 4, 7, and 9.
-- Calendar month and selected-day tasks: Tasks 6 and 8.
-- Notification center, read state, clear action, and detail navigation: Tasks 6 and 10.
-- Profile, category management, reminder explanation, privacy: Tasks 3 and 10.
-- Private data, authentication, CloudBase, tests, delivery, and review: Tasks 1, 3, 9, and 11.
-
-No approved requirement is without an implementing task. The only conditional deliverable is WeChat subscription-message delivery; Task 9 contains a concrete platform gate and in-app-only downgrade path.
-
-### Placeholder scan
-
-The scan for unfinished markers found only the valid lowercase domain value `todo` in `TaskStatus`; it found no unfinished implementation marker. The plan contains no generic error-handling instruction, omitted user-facing error text, or unspecified cloud-function contract.
-
-### Type consistency
-
-- Task and reminder fields use `TaskInput`, `Task`, `Reminder`, `TaskPriority`, and `ReminderOffset` from Shared Interfaces throughout.
-- All cloud calls return `CloudResult<T>` and are invoked through `callCloud<T>()`.
-- `taskSave` accepts `SaveTaskInput`; `listTasks` accepts `TaskListInput`; notification methods use `AppNotification`.
-- Reminder delivery uses `task.id`, `task.reminder.triggerAtMs`, and `ReminderStatus` consistently across Tasks 4, 6, and 9.
+- 浠诲姟 3鈥?0 瑕嗙洊鐧诲綍銆佷换鍔°€佸垎绫汇€佺鏈?OSS銆佹彁閱掋€佹棩鍘嗐€侀€氱煡銆佽缃€侀儴缃蹭笌楠屾敹銆?- 姣忛」鍧囧寘鍚け璐ユ祴璇曘€佹渶灏忓疄鐜般€侀€氳繃楠岃瘉銆佺嫭绔?Git 鎻愪氦鍜屾帹閫併€?- 鍞竴闇€瑕佺敤鎴峰湪閮ㄧ讲闃舵濉啓鐨勪俊鎭槸鍩熷悕鍜屾満瀵嗭紱瀹冧滑琚槑纭檺鍒跺湪鏈嶅姟鍣?.env 鎴栧井淇″悗鍙帮紝闈炰唬鐮佺己椤广€?
