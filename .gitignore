@@ -1,5 +1,6 @@
 node_modules/
 dist/
+miniprogram/**/*.js
 .env
 backend/.env
 backend/.venv/
