@@ -7,5 +7,9 @@ declare const wx: {
     success(response: { statusCode: number; data: unknown }): void;
     fail(error: unknown): void;
   }): void;
+  login(options: {
+    success(response: { code?: string }): void;
+    fail(error: unknown): void;
+  }): void;
   navigateTo(options: { url: string }): void;
 };
