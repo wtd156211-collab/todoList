@@ -5,11 +5,13 @@ from fastapi import FastAPI
 from app.core.errors import ApiError, api_error_handler
 from app.api.auth import router as auth_router
 from app.api.tasks import router as tasks_router
+from app.api.categories import router as categories_router
 
 app = FastAPI(title="Flowlist API")
 app.add_exception_handler(ApiError, api_error_handler)
 app.include_router(auth_router)
 app.include_router(tasks_router)
+app.include_router(categories_router)
 
 
 @app.middleware("http")
