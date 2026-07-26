@@ -1,0 +1,10 @@
+.task-form { display: flex; flex-direction: column; gap: 28rpx; }
+.intro { display: flex; flex-direction: column; gap: 12rpx; }
+.heading { font-size: 48rpx; font-weight: 700; }
+.copy { color: #64748b; }
+.title-input, .note-input { box-sizing: border-box; width: 100%; padding: 26rpx; border-radius: 20rpx; background: #fff; border: 2rpx solid #e2e8f0; }
+.note-input { min-height: 260rpx; }
+.priority-row { display: flex; justify-content: space-between; padding: 28rpx; border-radius: 20rpx; background: #fff; }
+.label { font-weight: 600; }
+.priority-value { color: #d97706; }
+.save-button { margin-top: 20rpx; border-radius: 999rpx; background: #2563eb; color: #fff; font-weight: 600; }

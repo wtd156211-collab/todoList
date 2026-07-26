@@ -1,0 +1,10 @@
+.home { display: flex; flex-direction: column; gap: 32rpx; }
+.hero { display: flex; flex-direction: column; gap: 12rpx; padding-top: 20rpx; }
+.eyebrow { color: #2563eb; font-size: 22rpx; font-weight: 700; letter-spacing: 4rpx; }
+.heading { font-size: 52rpx; font-weight: 700; }
+.subheading { color: #64748b; }
+.empty-card { padding: 42rpx 32rpx; border-radius: 28rpx; background: #e0ecff; display: flex; flex-direction: column; gap: 12rpx; }
+.empty-title { font-size: 34rpx; font-weight: 700; }
+.empty-copy { color: #475569; }
+.task-list { display: flex; flex-direction: column; gap: 20rpx; }
+.add-button { position: fixed; right: 32rpx; bottom: 48rpx; margin: 0; border-radius: 999rpx; background: #2563eb; color: #fff; font-weight: 600; box-shadow: 0 12rpx 30rpx rgba(37, 99, 235, .32); }

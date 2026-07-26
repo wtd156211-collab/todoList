@@ -1,3 +1,15 @@
-<view class="page">
-  <text>我的任务</text>
+<view class="page home">
+  <view class="hero">
+    <text class="eyebrow">FLOWLIST</text>
+    <text class="heading">我的任务</text>
+    <text class="subheading">{{greeting}}</text>
+  </view>
+  <view wx:if="{{tasks.length === 0}}" class="empty-card">
+    <text class="empty-title">今天还没有任务</text>
+    <text class="empty-copy">从一个清晰的小目标开始吧。</text>
+  </view>
+  <view wx:else class="task-list">
+    <task-card wx:for="{{tasks}}" wx:key="id" title="{{item.title}}" dueText="{{item.dueText}}" priority="{{item.priority}}" />
+  </view>
+  <button class="add-button" bindtap="onAddTask">＋ 新建任务</button>
 </view>

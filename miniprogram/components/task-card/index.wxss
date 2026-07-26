@@ -1,0 +1,24 @@
+.task-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 28rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 8rpx 30rpx rgba(15, 23, 42, 0.06);
+}
+
+.check {
+  width: 36rpx;
+  height: 36rpx;
+  border: 3rpx solid #94a3b8;
+  border-radius: 50%;
+}
+
+.content { flex: 1; display: flex; flex-direction: column; gap: 8rpx; }
+.title { font-size: 30rpx; font-weight: 600; }
+.meta { color: #64748b; font-size: 24rpx; }
+.priority { width: 14rpx; height: 52rpx; border-radius: 99rpx; }
+.priority-high { background: #ef4444; }
+.priority-medium { background: #f59e0b; }
+.priority-low { background: #22c55e; }

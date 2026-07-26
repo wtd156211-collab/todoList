@@ -1,3 +1,13 @@
-<view class="page">
-  <text>新建任务</text>
+<view class="page task-form">
+  <view class="intro">
+    <text class="heading">新建任务</text>
+    <text class="copy">把要做的事写下来，剩下的交给 Flowlist。</text>
+  </view>
+  <input class="title-input" placeholder="例如：整理项目计划" value="{{title}}" bindinput="onTitleInput" />
+  <textarea class="note-input" placeholder="添加备注（可选）" value="{{note}}" bindinput="onNoteInput" />
+  <view class="priority-row">
+    <text class="label">优先级</text>
+    <text class="priority-value">中</text>
+  </view>
+  <button class="save-button">保存任务</button>
 </view>

@@ -1,0 +1,18 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 24rpx;
+}
+
+.title-input,
+.note-input {
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: 20rpx;
+  background: #f1f5f9;
+  padding: 24rpx;
+}
+
+.note-input {
+  min-height: 220rpx;
+}

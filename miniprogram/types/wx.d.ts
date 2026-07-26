@@ -7,4 +7,5 @@ declare const wx: {
     success(response: { statusCode: number; data: unknown }): void;
     fail(error: unknown): void;
   }): void;
+  navigateTo(options: { url: string }): void;
 };

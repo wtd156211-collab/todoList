@@ -1,0 +1,8 @@
+<view class="task-card">
+  <view class="check"></view>
+  <view class="content">
+    <text class="title">{{title}}</text>
+    <text wx:if="{{dueText}}" class="meta">{{dueText}}</text>
+  </view>
+  <view class="priority priority-{{priority}}"></view>
+</view>

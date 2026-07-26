@@ -1,0 +1,4 @@
+<view class="editor">
+  <input class="title-input" placeholder="任务标题" value="{{title}}" bindinput="onTitleInput" />
+  <textarea class="note-input" placeholder="添加备注（可选）" value="{{note}}" bindinput="onNoteInput" />
+</view>
