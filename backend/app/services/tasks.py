@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.task import Task
@@ -23,3 +24,9 @@ class TaskService:
         await self.session.commit()
         await self.session.refresh(task)
         return task
+
+    async def list(self, user_id: UUID) -> list[Task]:
+        result = await self.session.scalars(
+            select(Task).where(Task.user_id == user_id).order_by(Task.created_at.desc())
+        )
+        return list(result)

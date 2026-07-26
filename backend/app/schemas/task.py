@@ -23,3 +23,7 @@ class TaskResponse(BaseModel):
     priority: Literal["low", "medium", "high"]
     status: Literal["todo", "completed"]
     version: int
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskResponse]

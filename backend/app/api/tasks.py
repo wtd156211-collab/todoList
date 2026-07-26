@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.security import decode_access_token
-from app.schemas.task import TaskCreate, TaskResponse
+from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse
 from app.services.auth import get_session
 from app.services.tasks import TaskService
 
@@ -45,3 +45,11 @@ async def create_task(
     service: TaskService = Depends(get_task_service),
 ) -> TaskResponse | dict[str, object]:
     return await service.create(user_id, payload)
+
+
+@router.get("", response_model=TaskListResponse)
+async def list_tasks(
+    user_id: UUID = Depends(get_current_user_id),
+    service: TaskService = Depends(get_task_service),
+) -> dict[str, object]:
+    return {"items": await service.list(user_id)}

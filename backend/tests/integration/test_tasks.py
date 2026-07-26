@@ -44,3 +44,41 @@ def test_create_task_uses_authenticated_user_not_request_user_id() -> None:
 
     assert response.status_code == 201
     assert response.json()["title"] == "整理项目计划"
+
+
+def test_list_tasks_uses_authenticated_user() -> None:
+    assert Path("app/api/tasks.py").is_file()
+    tasks_api = import_module("app.api.tasks")
+    app = import_module("app.main").app
+
+    class FakeTaskService:
+        async def list(self, user_id: UUID) -> list[dict[str, object]]:
+            assert user_id == UUID("00000000-0000-0000-0000-000000000001")
+            return [
+                {
+                    "id": "00000000-0000-0000-0000-000000000010",
+                    "title": "整理项目计划",
+                    "note": "",
+                    "priority": "medium",
+                    "status": "todo",
+                    "version": 1,
+                }
+            ]
+
+    app.dependency_overrides[tasks_api.get_current_user_id] = lambda: UUID(
+        "00000000-0000-0000-0000-000000000001"
+    )
+    app.dependency_overrides[tasks_api.get_task_service] = lambda: FakeTaskService()
+
+    async def list_tasks() -> httpx.Response:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            return await client.get("/flowlist/api/v1/tasks")
+
+    try:
+        response = asyncio.run(list_tasks())
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["title"] == "整理项目计划"
