@@ -30,4 +30,12 @@ export class TasksStore {
       this.loading = false;
     }
   }
+
+  async create(input: TaskInput): Promise<ApiResult<Task>> {
+    const result = await this.gateway.create(this.getAccessToken(), input);
+    if (result.ok) {
+      this.items = [result.data, ...this.items];
+    }
+    return result;
+  }
 }

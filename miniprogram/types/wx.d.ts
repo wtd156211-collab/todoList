@@ -12,4 +12,9 @@ declare const wx: {
     fail(error: unknown): void;
   }): void;
   navigateTo(options: { url: string }): void;
+  navigateBack(): void;
+  getStorageSync(key: string): unknown;
+  removeStorageSync(key: string): void;
+  setStorageSync(key: string, value: unknown): void;
+  showToast(options: { title: string; icon?: 'none' | 'success' }): void;
 };

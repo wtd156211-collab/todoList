@@ -9,5 +9,5 @@
     <text class="label">优先级</text>
     <text class="priority-value">中</text>
   </view>
-  <button class="save-button">保存任务</button>
+  <button class="save-button" bindtap="onSave">保存任务</button>
 </view>

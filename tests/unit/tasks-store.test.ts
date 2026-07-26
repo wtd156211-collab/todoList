@@ -22,3 +22,23 @@ it('refresh replaces the task list returned by its gateway', async () => {
   expect(store.items.map((task) => task.id)).toEqual(['task-1']);
   expect(store.loading).toBe(false);
 });
+
+it('create prepends a newly created task to the current list', async () => {
+  const gateway: TaskGateway = {
+    async create() {
+      return {
+        ok: true,
+        data: { id: 'task-2', title: '完成小程序', note: '', priority: 'high', status: 'todo', version: 1 }
+      };
+    },
+    async list() {
+      throw new Error('not used');
+    }
+  };
+  const store = new TasksStore(gateway, () => 'access-token');
+
+  const result = await store.create({ title: '完成小程序', note: '', priority: 'high' });
+
+  expect(result.ok).toBe(true);
+  expect(store.items.map((task) => task.id)).toEqual(['task-2']);
+});

@@ -11,5 +11,6 @@
   <view wx:else class="task-list">
     <task-card wx:for="{{tasks}}" wx:key="id" title="{{item.title}}" dueText="{{item.dueText}}" priority="{{item.priority}}" />
   </view>
+  <text wx:if="{{loadError}}" class="load-error">{{loadError}}</text>
   <button class="add-button" bindtap="onAddTask">＋ 新建任务</button>
 </view>

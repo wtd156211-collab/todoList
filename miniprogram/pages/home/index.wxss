@@ -8,3 +8,4 @@
 .empty-copy { color: #475569; }
 .task-list { display: flex; flex-direction: column; gap: 20rpx; }
 .add-button { position: fixed; right: 32rpx; bottom: 48rpx; margin: 0; border-radius: 999rpx; background: #2563eb; color: #fff; font-weight: 600; box-shadow: 0 12rpx 30rpx rgba(37, 99, 235, .32); }
+.load-error { display: block; margin: 24rpx 8rpx 0; color: #a34a3a; font-size: 24rpx; }
