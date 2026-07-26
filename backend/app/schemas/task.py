@@ -27,3 +27,11 @@ class TaskResponse(BaseModel):
 
 class TaskListResponse(BaseModel):
     items: list[TaskResponse]
+
+
+class TaskUpdate(BaseModel):
+    version: int = Field(ge=1)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    note: str | None = Field(default=None, max_length=10000)
+    priority: Literal["low", "medium", "high"] | None = None
+    status: Literal["todo", "completed"] | None = None

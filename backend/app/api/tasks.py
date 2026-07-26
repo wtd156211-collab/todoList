@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.security import decode_access_token
-from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse
+from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
 from app.services.auth import get_session
 from app.services.tasks import TaskService
 
@@ -53,3 +53,22 @@ async def list_tasks(
     service: TaskService = Depends(get_task_service),
 ) -> dict[str, object]:
     return {"items": await service.list(user_id)}
+
+
+@router.patch("/{task_id}", response_model=TaskResponse)
+async def update_task(
+    task_id: UUID,
+    payload: TaskUpdate,
+    user_id: UUID = Depends(get_current_user_id),
+    service: TaskService = Depends(get_task_service),
+) -> TaskResponse | dict[str, object]:
+    return await service.update(user_id, task_id, payload)
+
+
+@router.delete("/{task_id}", status_code=204)
+async def delete_task(
+    task_id: UUID,
+    user_id: UUID = Depends(get_current_user_id),
+    service: TaskService = Depends(get_task_service),
+) -> None:
+    await service.delete(user_id, task_id)
